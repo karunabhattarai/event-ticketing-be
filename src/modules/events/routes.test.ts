@@ -113,8 +113,7 @@ describe('GET /events/mine', () => {
 });
 
 describe('GET /events/mine/stats', () => {
-  // depends on Task 12 (checkout) — un-skip once that route exists
-  it.skip('aggregates tickets sold, revenue, and check-ins across all owned events', async () => {
+  it('aggregates tickets sold, revenue, and check-ins across all owned events', async () => {
     const { cookie } = await registerOrganizer();
     const eventA = await testApp().post('/events').set('Cookie', cookie).send({ title: 'A', description: 'd', venue: 'v', startsAt: '2026-12-01T18:00:00Z' });
     await testApp().patch(`/events/${eventA.body.id}`).set('Cookie', cookie).send({ status: 'published' });
@@ -140,8 +139,7 @@ describe('GET /events/mine/stats', () => {
     expect(res.body.ticketsCheckedIn).toBe(0);
   });
 
-  // depends on Task 12 (checkout) — un-skip once that route exists
-  it.skip('excludes a pending (unpaid, abandoned) order from both ticketsSold and revenue', async () => {
+  it('excludes a pending (unpaid, abandoned) order from both ticketsSold and revenue', async () => {
     const { cookie } = await registerOrganizer();
     const eventA = await testApp().post('/events').set('Cookie', cookie).send({ title: 'A', description: 'd', venue: 'v', startsAt: '2026-12-01T18:00:00Z' });
     await testApp().patch(`/events/${eventA.body.id}`).set('Cookie', cookie).send({ status: 'published' });
