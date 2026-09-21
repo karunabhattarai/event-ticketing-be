@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { testApp } from '../../../tests/helpers/testApp';
 import { truncateAll } from '../../../tests/helpers/testDb';
+import { prisma } from '../../db/client';
 
 beforeEach(async () => {
   await truncateAll();
@@ -43,5 +44,17 @@ describe('PATCH /events/:eventId/tiers/:tierId', () => {
     const res = await testApp().patch(`/events/${eventId}/tiers/${create.body.id}`).set('Cookie', cookie).send({ price: 900 });
     expect(res.status).toBe(200);
     expect(Number(res.body.price)).toBe(900);
+  });
+
+  it('rejects lowering quantityTotal below quantitySold', async () => {
+    const { cookie, eventId } = await setupEvent();
+    const create = await testApp().post(`/events/${eventId}/tiers`).set('Cookie', cookie).send({ name: 'General', price: 800, quantityTotal: 100 });
+    await prisma.ticketTier.update({ where: { id: create.body.id }, data: { quantitySold: 10 } });
+
+    const res = await testApp().patch(`/events/${eventId}/tiers/${create.body.id}`).set('Cookie', cookie).send({ quantityTotal: 5 });
+    expect(res.status).toBe(400);
+
+    const unchanged = await prisma.ticketTier.findUniqueOrThrow({ where: { id: create.body.id } });
+    expect(unchanged.quantityTotal).toBe(100);
   });
 });

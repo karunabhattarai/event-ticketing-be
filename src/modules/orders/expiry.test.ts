@@ -22,7 +22,7 @@ beforeEach(async () => {
 });
 
 async function setupStaleOrder(overrides: Partial<{ paymentMethod: 'redirect' | 'dynamic_qr'; fonepayBankCode: string | null; fonepayUid: string | null; ageMinutes: number }> = {}) {
-  const organizer = await prisma.organizer.create({ data: { email: 'o@example.com', passwordHash: 'x', name: 'O' } });
+  const organizer = await prisma.organizer.create({ data: { email: `o-${Math.random()}@example.com`, passwordHash: 'x', name: 'O' } });
   const event = await prisma.event.create({ data: { organizerId: organizer.id, title: 'Show', description: 'd', venue: 'v', startsAt: new Date(), status: 'published' } });
   const tier = await prisma.ticketTier.create({ data: { eventId: event.id, name: 'General', price: 800, quantityTotal: 10, quantitySold: 1 } });
   const order = await prisma.order.create({
@@ -94,5 +94,29 @@ describe('expireStalePendingOrders', () => {
     expect(result.expired).toBe(0);
     const updated = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
     expect(updated.status).toBe('fulfilled');
+  });
+
+  it('continues processing other orders when one order throws during reconciliation', async () => {
+    const { order: throwingOrder } = await setupStaleOrder({ paymentMethod: 'dynamic_qr' });
+    const { order: healthyOrder, tier: healthyTier } = await setupStaleOrder({ paymentMethod: 'redirect', fonepayBankCode: null, fonepayUid: null });
+
+    vi.mocked(checkDynamicQrStatus).mockImplementation(async (_config, { prn }) => {
+      if (prn === throwingOrder.prn) throw new Error('Fonepay network error');
+      return { paymentStatus: 'failed', fonepayTraceId: '', prn, merchantCode: '' };
+    });
+
+    const result = await expireStalePendingOrders();
+
+    expect(result.checked).toBe(2);
+    expect(result.failed).toBe(1);
+    expect(result.expired).toBe(1);
+
+    const stillPending = await prisma.order.findUniqueOrThrow({ where: { id: throwingOrder.id } });
+    expect(stillPending.status).toBe('pending');
+
+    const settled = await prisma.order.findUniqueOrThrow({ where: { id: healthyOrder.id } });
+    expect(settled.status).toBe('failed');
+    const updatedTier = await prisma.ticketTier.findUniqueOrThrow({ where: { id: healthyTier.id } });
+    expect(updatedTier.quantitySold).toBe(0);
   });
 });

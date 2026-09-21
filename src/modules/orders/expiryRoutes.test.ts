@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { testApp } from '../../../tests/helpers/testApp';
 import { truncateAll } from '../../../tests/helpers/testDb';
 
-vi.mock('./expiry', () => ({ expireStalePendingOrders: vi.fn(async () => ({ checked: 3, expired: 1 })) }));
+vi.mock('./expiry', () => ({ expireStalePendingOrders: vi.fn(async () => ({ checked: 3, expired: 1, failed: 0 })) }));
 import { expireStalePendingOrders } from './expiry';
 
 describe('POST /internal/orders/expire', () => {
@@ -10,7 +10,7 @@ describe('POST /internal/orders/expire', () => {
     await truncateAll();
     const res = await testApp().post('/internal/orders/expire').set('X-Cron-Secret', process.env.CRON_SECRET!);
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ checked: 3, expired: 1 });
+    expect(res.body).toEqual({ checked: 3, expired: 1, failed: 0 });
     expect(expireStalePendingOrders).toHaveBeenCalledTimes(1);
   });
 

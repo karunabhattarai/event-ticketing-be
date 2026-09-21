@@ -45,7 +45,10 @@ tiersRouter.post('/', requireOrganizer, async (req, res, next) => {
 tiersRouter.patch('/:tierId', requireOrganizer, async (req, res, next) => {
   try {
     const body = updateSchema.parse(req.body);
-    await getOwnedTierOrThrow(req.params.eventId, req.params.tierId, req.organizerId!);
+    const existingTier = await getOwnedTierOrThrow(req.params.eventId, req.params.tierId, req.organizerId!);
+    if (body.quantityTotal !== undefined && body.quantityTotal < existingTier.quantitySold) {
+      throw new AppError(400, `quantityTotal cannot be less than quantitySold (${existingTier.quantitySold})`);
+    }
 
     const tier = await prisma.ticketTier.update({
       where: { id: req.params.tierId },

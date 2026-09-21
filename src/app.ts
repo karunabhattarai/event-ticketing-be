@@ -2,6 +2,7 @@ import express, { Express } from 'express';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import { errorHandler } from './middleware/errorHandler';
+import { requireCsrfHeader } from './middleware/requireCsrfHeader';
 import { env } from './env';
 import { organizerAuthRouter } from './modules/organizerAuth/routes';
 import { buyerAuthRouter } from './modules/buyerAuth/routes';
@@ -23,6 +24,7 @@ export function createApp(): Express {
   app.use(cors({ origin: env.appBaseUrl, credentials: true }));
   app.use(express.json());
   app.use(cookieParser());
+  app.use(requireCsrfHeader);
 
   app.get('/health', (_req, res) => res.json({ ok: true }));
 

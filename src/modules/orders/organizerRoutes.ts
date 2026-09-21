@@ -13,7 +13,20 @@ organizerOrdersRouter.get('/', requireOrganizer, async (req, res, next) => {
 
     const orders = await prisma.order.findMany({
       where: { items: { some: { ticketTier: { eventId: req.params.eventId } } } },
-      include: { items: { include: { ticketTier: true } } },
+      select: {
+        id: true,
+        buyerId: true,
+        guestEmail: true,
+        guestName: true,
+        status: true,
+        totalAmount: true,
+        currency: true,
+        paymentMethod: true,
+        createdAt: true,
+        paidAt: true,
+        fulfilledAt: true,
+        items: { include: { ticketTier: true } },
+      },
       orderBy: { createdAt: 'desc' },
     });
 

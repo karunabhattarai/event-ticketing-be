@@ -42,6 +42,16 @@ describe('GET /events/:eventId/orders', () => {
     });
   });
 
+  it('does not leak the buyer accessToken in the order list', async () => {
+    const { cookie, eventId } = await setupFulfilledOrder();
+    const res = await testApp().get(`/events/${eventId}/orders`).set('Cookie', cookie);
+    expect(res.status).toBe(200);
+    expect(res.body.orders.length).toBeGreaterThan(0);
+    for (const order of res.body.orders) {
+      expect(order).not.toHaveProperty('accessToken');
+    }
+  });
+
   it("rejects listing another organizer's event orders", async () => {
     const { eventId } = await setupFulfilledOrder();
     const other = await testApp().post('/organizer/auth/register').send({ email: 'other@example.com', password: 'password123', name: 'B' });
