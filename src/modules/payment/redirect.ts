@@ -5,6 +5,7 @@ import { AppError } from '../../middleware/errorHandler';
 import { claimFailedAndRelease } from '../checkout/service';
 import { fulfillOrder } from '../fulfillment/service';
 import { env } from '../../env';
+import { safeCompare } from '../../lib/safeCompare';
 
 export const redirectPaymentRouter = Router();
 
@@ -20,7 +21,8 @@ redirectPaymentRouter.post('/:orderId/initiate', async (req, res, next) => {
     // Same 403-for-both-cases shape as GET /orders/:id (Task 16) — order ids
     // aren't secret (they show up in organizer views and URLs), so acting on
     // one requires proving you hold its access token, not just knowing the id.
-    if (!order || order.accessToken !== req.query.token) throw new AppError(403, 'Forbidden');
+    if (typeof req.query.token !== 'string') throw new AppError(403, 'Forbidden');
+    if (!order || !safeCompare(order.accessToken, req.query.token)) throw new AppError(403, 'Forbidden');
     if (order.status !== 'pending') throw new AppError(400, 'Order is not pending payment');
 
     // Not retried — initiatePayment is not idempotent (Global Constraints).

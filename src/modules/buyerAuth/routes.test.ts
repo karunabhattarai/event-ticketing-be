@@ -50,3 +50,12 @@ describe('POST /buyer/auth/login', () => {
     expect(res.status).toBe(401);
   });
 });
+
+describe('POST /buyer/auth/logout', () => {
+  it('clears the buyer_token cookie', async () => {
+    await testApp().post('/buyer/auth/register').send({ email: 'blogout@example.com', password: 'password123', name: 'A' });
+    const res = await testApp().post('/buyer/auth/logout');
+    expect(res.status).toBe(200);
+    expect(res.headers['set-cookie']?.[0]).toMatch(/buyer_token=;/);
+  });
+});

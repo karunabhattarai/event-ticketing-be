@@ -1,6 +1,7 @@
 import express, { Express } from 'express';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
+import helmet from 'helmet';
 import { errorHandler } from './middleware/errorHandler';
 import { requireCsrfHeader } from './middleware/requireCsrfHeader';
 import { env } from './env';
@@ -19,6 +20,9 @@ import { expiryRouter } from './modules/orders/expiryRoutes';
 
 export function createApp(): Express {
   const app = express();
+  // First middleware — sets response headers (X-Content-Type-Options, HSTS,
+  // etc.) that should apply to every response, including error ones.
+  app.use(helmet());
   // credentials:true + an explicit origin (never '*') — the frontend runs on a
   // different port (Vite dev server) and must send/receive the auth cookies.
   app.use(cors({ origin: env.appBaseUrl, credentials: true }));

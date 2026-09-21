@@ -5,6 +5,10 @@ import { env } from '../env';
 
 const SALT_ROUNDS = 10;
 
+// Must match signJwt's `expiresIn: '7d'` below — the cookie should not outlive
+// (or die before) the JWT it carries.
+const SESSION_DAYS = 7;
+
 // Shared by both auth cookie routes (Tasks 6, 8). In production the frontend
 // and API are on different registrable domains, so a cross-site
 // credentials:'include' request needs SameSite=None + Secure — a plain
@@ -13,9 +17,10 @@ const SALT_ROUNDS = 10;
 // ports only), which still counts as same-site, so Lax without Secure works
 // for HTTP dev without needing a certificate.
 export function authCookieOptions(): CookieOptions {
+  const base = { httpOnly: true, maxAge: SESSION_DAYS * 24 * 60 * 60 * 1000 };
   return env.nodeEnv === 'production'
-    ? { httpOnly: true, sameSite: 'none', secure: true }
-    : { httpOnly: true, sameSite: 'lax' };
+    ? { ...base, sameSite: 'none', secure: true }
+    : { ...base, sameSite: 'lax' };
 }
 
 export async function hashPassword(plain: string): Promise<string> {
@@ -27,6 +32,7 @@ export async function verifyPassword(plain: string, hash: string): Promise<boole
 }
 
 export function signJwt(payload: { id: string }, secret: string): string {
+  // '7d' here must match authCookieOptions's maxAge (SESSION_DAYS = 7) above.
   return jwt.sign(payload, secret, { expiresIn: '7d' });
 }
 

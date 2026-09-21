@@ -51,3 +51,12 @@ describe('POST /organizer/auth/login', () => {
     expect(res.status).toBe(401);
   });
 });
+
+describe('POST /organizer/auth/logout', () => {
+  it('clears the organizer_token cookie', async () => {
+    await testApp().post('/organizer/auth/register').send({ email: 'logout@example.com', password: 'password123', name: 'A' });
+    const res = await testApp().post('/organizer/auth/logout');
+    expect(res.status).toBe(200);
+    expect(res.headers['set-cookie']?.[0]).toMatch(/organizer_token=;/);
+  });
+});

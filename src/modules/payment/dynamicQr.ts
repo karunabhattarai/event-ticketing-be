@@ -10,6 +10,7 @@ import { AppError } from '../../middleware/errorHandler';
 import { claimFailedAndRelease } from '../checkout/service';
 import { fulfillOrder } from '../fulfillment/service';
 import { env } from '../../env';
+import { safeCompare } from '../../lib/safeCompare';
 
 export const dynamicQrPaymentRouter = Router();
 
@@ -42,8 +43,9 @@ async function settleOrder(orderId: string, outcome: 'paid' | 'failed') {
 
 dynamicQrPaymentRouter.post('/:orderId/generate', async (req, res, next) => {
   try {
+    if (typeof req.query.token !== 'string') throw new AppError(403, 'Forbidden');
     const order = await prisma.order.findUnique({ where: { id: req.params.orderId } });
-    if (!order || order.accessToken !== req.query.token) throw new AppError(403, 'Forbidden');
+    if (!order || !safeCompare(order.accessToken, req.query.token)) throw new AppError(403, 'Forbidden');
     if (order.status !== 'pending') throw new AppError(400, 'Order is not pending payment');
 
     const qr = await generateDynamicQr(qrConfig, {
@@ -91,8 +93,9 @@ dynamicQrPaymentRouter.post('/:orderId/generate', async (req, res, next) => {
 
 dynamicQrPaymentRouter.get('/:orderId/status', async (req, res, next) => {
   try {
+    if (typeof req.query.token !== 'string') throw new AppError(403, 'Forbidden');
     const order = await prisma.order.findUnique({ where: { id: req.params.orderId } });
-    if (!order || order.accessToken !== req.query.token) throw new AppError(403, 'Forbidden');
+    if (!order || !safeCompare(order.accessToken, req.query.token)) throw new AppError(403, 'Forbidden');
 
     if (order.status !== 'pending') {
       res.status(200).json({ status: order.status });

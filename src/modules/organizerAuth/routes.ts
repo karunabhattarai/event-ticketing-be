@@ -58,3 +58,12 @@ organizerAuthRouter.post('/login', authRateLimiter, async (req, res, next) => {
     next(err);
   }
 });
+
+organizerAuthRouter.post('/logout', (req, res) => {
+  // sameSite/secure must match the cookie's original options for clearCookie to
+  // actually clear it in all browsers; maxAge is dropped since Express deprecates
+  // (and ignores) it here — clearCookie already expires the cookie immediately.
+  const { maxAge, ...clearOptions } = authCookieOptions();
+  res.clearCookie('organizer_token', clearOptions);
+  res.status(200).json({ ok: true });
+});
