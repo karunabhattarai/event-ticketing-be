@@ -3,6 +3,7 @@ import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import { errorHandler } from './middleware/errorHandler';
 import { env } from './env';
+import { organizerAuthRouter } from './modules/organizerAuth/routes';
 
 export function createApp(): Express {
   const app = express();
@@ -14,8 +15,7 @@ export function createApp(): Express {
 
   app.get('/health', (_req, res) => res.json({ ok: true }));
 
-  // Later tasks mount route modules here, e.g.:
-  // app.use('/organizer/auth', organizerAuthRouter);
+  app.use('/organizer/auth', organizerAuthRouter);
 
   app.use(errorHandler);
   return app;
