@@ -62,8 +62,7 @@ describe('GET /events (public)', () => {
     expect(titles).not.toContain('Draft Event');
   });
 
-  // depends on Task 10 (tiers) — un-skip once that route exists
-  it.skip('includes tiers on each event', async () => {
+  it('includes tiers on each event', async () => {
     const { cookie } = await registerOrganizer();
     const published = await testApp().post('/events').set('Cookie', cookie).send({ title: 'X', description: 'd', venue: 'v', startsAt: '2026-12-01T18:00:00Z' });
     await testApp().post(`/events/${published.body.id}/tiers`).set('Cookie', cookie).send({ name: 'General', price: 800, quantityTotal: 100 });
@@ -103,8 +102,7 @@ describe('GET /events/mine', () => {
     expect(res.body.length).toBe(1);
   });
 
-  // depends on Task 10 (tiers) — un-skip once that route exists
-  it.skip('includes tiers on each event', async () => {
+  it('includes tiers on each event', async () => {
     const { cookie } = await registerOrganizer();
     const create = await testApp().post('/events').set('Cookie', cookie).send({ title: 'X', description: 'd', venue: 'v', startsAt: '2026-12-01T18:00:00Z' });
     await testApp().post(`/events/${create.body.id}/tiers`).set('Cookie', cookie).send({ name: 'General', price: 800, quantityTotal: 100 });

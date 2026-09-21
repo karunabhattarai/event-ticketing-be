@@ -6,6 +6,7 @@ import { env } from './env';
 import { organizerAuthRouter } from './modules/organizerAuth/routes';
 import { buyerAuthRouter } from './modules/buyerAuth/routes';
 import { eventsRouter } from './modules/events/routes';
+import { tiersRouter } from './modules/tiers/routes';
 
 export function createApp(): Express {
   const app = express();
@@ -20,6 +21,7 @@ export function createApp(): Express {
   app.use('/organizer/auth', organizerAuthRouter);
   app.use('/buyer/auth', buyerAuthRouter);
   app.use('/events', eventsRouter);
+  app.use('/events/:eventId/tiers', tiersRouter);
 
   app.use(errorHandler);
   return app;
