@@ -11,6 +11,7 @@ import { claimFailedAndRelease } from '../checkout/service';
 import { fulfillOrder } from '../fulfillment/service';
 import { env } from '../../env';
 import { safeCompare } from '../../lib/safeCompare';
+import { retryOnce } from '../../lib/retryOnce';
 
 export const dynamicQrPaymentRouter = Router();
 
@@ -103,7 +104,7 @@ dynamicQrPaymentRouter.get('/:orderId/status', async (req, res, next) => {
     }
 
     // Fallback poll — only reached while still pending (Global Constraints: websocket primary + poll fallback).
-    const result = await checkDynamicQrStatus(qrConfig, { prn: order.prn });
+    const result = await retryOnce(() => checkDynamicQrStatus(qrConfig, { prn: order.prn }));
     if (result.paymentStatus === 'success') {
       await settleOrder(order.id, 'paid');
     } else if (result.paymentStatus === 'failed') {

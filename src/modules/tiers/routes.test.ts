@@ -57,4 +57,23 @@ describe('PATCH /events/:eventId/tiers/:tierId', () => {
     const unchanged = await prisma.ticketTier.findUniqueOrThrow({ where: { id: create.body.id } });
     expect(unchanged.quantityTotal).toBe(100);
   });
+
+  it('clears salesEndAt back to null when explicitly sent as null', async () => {
+    const { cookie, eventId } = await setupEvent();
+    const create = await testApp()
+      .post(`/events/${eventId}/tiers`)
+      .set('Cookie', cookie)
+      .send({ name: 'General', price: 800, quantityTotal: 100, salesEndAt: '2026-12-01T00:00:00Z' });
+    expect(create.body.salesEndAt).not.toBeNull();
+
+    const res = await testApp()
+      .patch(`/events/${eventId}/tiers/${create.body.id}`)
+      .set('Cookie', cookie)
+      .send({ salesEndAt: null });
+    expect(res.status).toBe(200);
+    expect(res.body.salesEndAt).toBeNull();
+
+    const updated = await prisma.ticketTier.findUniqueOrThrow({ where: { id: create.body.id } });
+    expect(updated.salesEndAt).toBeNull();
+  });
 });

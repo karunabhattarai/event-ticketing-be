@@ -11,8 +11,8 @@ const createSchema = z.object({
   price: z.number().positive(),
   currency: z.string().optional(),
   quantityTotal: z.number().int().positive(),
-  salesStartAt: z.string().datetime().optional(),
-  salesEndAt: z.string().datetime().optional(),
+  salesStartAt: z.string().datetime().nullable().optional(),
+  salesEndAt: z.string().datetime().nullable().optional(),
 });
 
 const updateSchema = createSchema.partial();
@@ -31,8 +31,8 @@ tiersRouter.post('/', requireOrganizer, async (req, res, next) => {
         price: body.price,
         currency: body.currency ?? 'NPR',
         quantityTotal: body.quantityTotal,
-        salesStartAt: body.salesStartAt ? new Date(body.salesStartAt) : undefined,
-        salesEndAt: body.salesEndAt ? new Date(body.salesEndAt) : undefined,
+        salesStartAt: body.salesStartAt === undefined ? undefined : body.salesStartAt ? new Date(body.salesStartAt) : null,
+        salesEndAt: body.salesEndAt === undefined ? undefined : body.salesEndAt ? new Date(body.salesEndAt) : null,
       },
     });
     res.status(201).json(tier);
@@ -54,8 +54,8 @@ tiersRouter.patch('/:tierId', requireOrganizer, async (req, res, next) => {
       where: { id: req.params.tierId },
       data: {
         ...body,
-        salesStartAt: body.salesStartAt ? new Date(body.salesStartAt) : undefined,
-        salesEndAt: body.salesEndAt ? new Date(body.salesEndAt) : undefined,
+        salesStartAt: body.salesStartAt === undefined ? undefined : body.salesStartAt ? new Date(body.salesStartAt) : null,
+        salesEndAt: body.salesEndAt === undefined ? undefined : body.salesEndAt ? new Date(body.salesEndAt) : null,
       },
     });
     res.status(200).json(tier);

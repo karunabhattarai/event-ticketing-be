@@ -73,6 +73,18 @@ describe('GET /events (public)', () => {
     expect(event.tiers.length).toBe(1);
     expect(event.tiers[0].name).toBe('General');
   });
+
+  it('paginates results with pageSize', async () => {
+    const { cookie } = await registerOrganizer();
+    const a = await testApp().post('/events').set('Cookie', cookie).send({ title: 'A', description: 'd', venue: 'v', startsAt: '2026-12-01T18:00:00Z' });
+    const b = await testApp().post('/events').set('Cookie', cookie).send({ title: 'B', description: 'd', venue: 'v', startsAt: '2026-12-02T18:00:00Z' });
+    await testApp().patch(`/events/${a.body.id}`).set('Cookie', cookie).send({ status: 'published' });
+    await testApp().patch(`/events/${b.body.id}`).set('Cookie', cookie).send({ status: 'published' });
+
+    const res = await testApp().get('/events').query({ pageSize: 1 });
+    expect(res.status).toBe(200);
+    expect(res.body.length).toBe(1);
+  });
 });
 
 describe('GET /events/:id (public)', () => {
@@ -90,6 +102,22 @@ describe('GET /events/:id (public)', () => {
     const res = await testApp().get(`/events/${create.body.id}`);
     expect(res.status).toBe(200);
     expect(res.body.title).toBe('X');
+  });
+
+  it('lets the owning organizer view their own draft event by id', async () => {
+    const { cookie } = await registerOrganizer();
+    const create = await testApp().post('/events').set('Cookie', cookie).send({ title: 'X', description: 'd', venue: 'v', startsAt: '2026-12-01T18:00:00Z' });
+    const res = await testApp().get(`/events/${create.body.id}`).set('Cookie', cookie);
+    expect(res.status).toBe(200);
+    expect(res.body.title).toBe('X');
+  });
+
+  it("404s a different organizer's draft event, even when authenticated", async () => {
+    const owner = await registerOrganizer('draft-owner@example.com');
+    const other = await registerOrganizer('draft-other@example.com');
+    const create = await testApp().post('/events').set('Cookie', owner.cookie).send({ title: 'X', description: 'd', venue: 'v', startsAt: '2026-12-01T18:00:00Z' });
+    const res = await testApp().get(`/events/${create.body.id}`).set('Cookie', other.cookie);
+    expect(res.status).toBe(404);
   });
 });
 

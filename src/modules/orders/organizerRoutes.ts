@@ -12,32 +12,42 @@ organizerOrdersRouter.get('/', requireOrganizer, async (req, res, next) => {
   try {
     await getOwnedEventOrThrow(req.params.eventId, req.organizerId!);
 
-    const orders = await prisma.order.findMany({
-      where: { items: { some: { ticketTier: { eventId: req.params.eventId } } } },
-      select: {
-        id: true,
-        buyerId: true,
-        guestEmail: true,
-        guestName: true,
-        status: true,
-        totalAmount: true,
-        currency: true,
-        paymentMethod: true,
-        createdAt: true,
-        paidAt: true,
-        fulfilledAt: true,
-        items: { include: { ticketTier: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const pageSize = Math.min(100, Math.max(1, Number(req.query.pageSize) || 20));
 
-    const statusCounts = { pending: 0, paid: 0, fulfilled: 0, failed: 0, refunded: 0 };
-    for (const order of orders) statusCounts[order.status]++;
+    const where = { items: { some: { ticketTier: { eventId: req.params.eventId } } } };
 
-    const [ticketsIssued, ticketsCheckedIn] = await Promise.all([
+    const [orders, statusGroups, ticketsIssued, ticketsCheckedIn] = await Promise.all([
+      prisma.order.findMany({
+        where,
+        select: {
+          id: true,
+          buyerId: true,
+          guestEmail: true,
+          guestName: true,
+          status: true,
+          totalAmount: true,
+          currency: true,
+          paymentMethod: true,
+          createdAt: true,
+          paidAt: true,
+          fulfilledAt: true,
+          items: { include: { ticketTier: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      // Dashboard tiles are organizer-wide/event-wide, not page-scoped — computed
+      // over the FULL matching set via groupBy, independent of the paginated
+      // `orders` query above.
+      prisma.order.groupBy({ by: ['status'], where, _count: true }),
       prisma.ticket.count({ where: { orderItem: { ticketTier: { eventId: req.params.eventId } } } }),
       prisma.ticket.count({ where: { orderItem: { ticketTier: { eventId: req.params.eventId } }, status: 'used' } }),
     ]);
+
+    const statusCounts = { pending: 0, paid: 0, fulfilled: 0, failed: 0, refunded: 0 };
+    for (const group of statusGroups) statusCounts[group.status] = group._count;
 
     res.status(200).json({ orders, stats: { ...statusCounts, ticketsIssued, ticketsCheckedIn } });
   } catch (err) {

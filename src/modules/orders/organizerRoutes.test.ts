@@ -58,6 +58,18 @@ describe('GET /events/:eventId/orders', () => {
     const res = await testApp().get(`/events/${eventId}/orders`).set('Cookie', other.headers['set-cookie']);
     expect(res.status).toBe(404);
   });
+
+  it('paginates the orders list while keeping stats computed over the full set', async () => {
+    const { cookie, eventId } = await setupFulfilledOrder();
+    // A second order for the same event/tier — creates a 2nd pending order.
+    const tier = await prisma.ticketTier.findFirstOrThrow({ where: { eventId } });
+    await testApp().post('/checkout').send({ items: [{ tierId: tier.id, quantity: 1 }], guestEmail: 'c@example.com', guestName: 'C', paymentMethod: 'redirect' });
+
+    const res = await testApp().get(`/events/${eventId}/orders`).query({ pageSize: 1 }).set('Cookie', cookie);
+    expect(res.status).toBe(200);
+    expect(res.body.orders.length).toBe(1);
+    expect(res.body.stats.pending).toBe(2);
+  });
 });
 
 describe('POST /events/:eventId/orders/:orderId/resend', () => {

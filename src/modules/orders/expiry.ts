@@ -3,6 +3,7 @@ import { prisma } from '../../db/client';
 import { claimFailedAndRelease } from '../checkout/service';
 import { fulfillOrder } from '../fulfillment/service';
 import { env } from '../../env';
+import { retryOnce } from '../../lib/retryOnce';
 
 const fonepayConfig = {
   merchantCode: env.fonepay.merchantCode,
@@ -47,7 +48,7 @@ export async function expireStalePendingOrders(): Promise<{ checked: number; exp
   for (const order of staleOrders) {
     try {
       if (order.paymentMethod === 'dynamic_qr') {
-        const result = await checkDynamicQrStatus(qrConfig, { prn: order.prn });
+        const result = await retryOnce(() => checkDynamicQrStatus(qrConfig, { prn: order.prn }));
         if (result.paymentStatus === 'success') {
           await claimAndSettle(order.id, 'paid');
         } else {
@@ -59,12 +60,16 @@ export async function expireStalePendingOrders(): Promise<{ checked: number; exp
 
       // redirect method — can only reconcile if a callback already stored bankCode/uid
       if (order.fonepayBankCode && order.fonepayUid) {
-        const result = await checkStatus(fonepayConfig, {
-          prn: order.prn,
-          amount: Number(order.totalAmount),
-          bankCode: order.fonepayBankCode,
-          uid: order.fonepayUid,
-        });
+        const bankCode = order.fonepayBankCode;
+        const uid = order.fonepayUid;
+        const result = await retryOnce(() =>
+          checkStatus(fonepayConfig, {
+            prn: order.prn,
+            amount: Number(order.totalAmount),
+            bankCode,
+            uid,
+          })
+        );
         if (result.RC === 'successful') {
           await claimAndSettle(order.id, 'paid');
           continue;

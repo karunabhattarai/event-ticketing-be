@@ -119,4 +119,30 @@ describe('expireStalePendingOrders', () => {
     const updatedTier = await prisma.ticketTier.findUniqueOrThrow({ where: { id: healthyTier.id } });
     expect(updatedTier.quantitySold).toBe(0);
   });
+
+  it('retries once on a transient checkDynamicQrStatus failure and succeeds on the 2nd call', async () => {
+    const { order } = await setupStaleOrder({ paymentMethod: 'dynamic_qr' });
+    vi.mocked(checkDynamicQrStatus)
+      .mockRejectedValueOnce(new Error('transient network blip'))
+      .mockResolvedValueOnce({ paymentStatus: 'success', fonepayTraceId: 'trace-1', prn: order.prn, merchantCode: '' });
+
+    const result = await expireStalePendingOrders();
+
+    expect(checkDynamicQrStatus).toHaveBeenCalledTimes(2);
+    expect(result.failed).toBe(0);
+    const updated = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+    expect(updated.status).toBe('fulfilled');
+  });
+
+  it('propagates as a failure after two consecutive checkDynamicQrStatus failures (retries exactly once)', async () => {
+    const { order } = await setupStaleOrder({ paymentMethod: 'dynamic_qr' });
+    vi.mocked(checkDynamicQrStatus).mockRejectedValue(new Error('still down'));
+
+    const result = await expireStalePendingOrders();
+
+    expect(checkDynamicQrStatus).toHaveBeenCalledTimes(2);
+    expect(result.failed).toBe(1);
+    const stillPending = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+    expect(stillPending.status).toBe('pending');
+  });
 });

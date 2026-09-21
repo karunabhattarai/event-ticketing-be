@@ -5,6 +5,7 @@ import { prisma } from '../../db/client';
 import { requireOrganizer } from '../../middleware/requireOrganizer';
 import { AppError } from '../../middleware/errorHandler';
 import { getOwnedEventOrThrow } from './service';
+import { requireOrganizerOptional } from '../../middleware/requireOrganizerOptional';
 
 const createSchema = z.object({
   title: z.string().min(1),
@@ -122,14 +123,19 @@ eventsRouter.get('/mine/stats', requireOrganizer, async (req, res, next) => {
   }
 });
 
-eventsRouter.get('/', async (_req, res, next) => {
+eventsRouter.get('/', async (req, res, next) => {
   try {
     // include tiers — the public listing page's EventCard needs tier prices
     // to render "From Rs. X" (frontend plan Task 3).
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const pageSize = Math.min(100, Math.max(1, Number(req.query.pageSize) || 20));
+
     const events = await prisma.event.findMany({
       where: { status: 'published' },
       include: { tiers: true },
       orderBy: { startsAt: 'asc' },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
     });
     res.status(200).json(events);
   } catch (err) {
@@ -137,10 +143,12 @@ eventsRouter.get('/', async (_req, res, next) => {
   }
 });
 
-eventsRouter.get('/:id', async (req, res, next) => {
+eventsRouter.get('/:id', requireOrganizerOptional, async (req, res, next) => {
   try {
     const event = await prisma.event.findFirst({
-      where: { id: req.params.id, status: 'published' },
+      where: req.organizerId
+        ? { id: req.params.id, OR: [{ status: 'published' }, { organizerId: req.organizerId }] }
+        : { id: req.params.id, status: 'published' },
       include: { tiers: true },
     });
     if (!event) throw new AppError(404, 'Event not found');
