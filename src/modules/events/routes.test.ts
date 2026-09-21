@@ -155,8 +155,7 @@ describe('GET /events/mine/stats', () => {
     expect(res.body.revenue).toBe('0');
   });
 
-  // depends on Task 10 (tiers) — un-skip once that route exists
-  it.skip("only counts the requesting organizer's own events", async () => {
+  it("only counts the requesting organizer's own events", async () => {
     const mine = await registerOrganizer('mine@example.com');
     const other = await registerOrganizer('other-stats@example.com');
     const otherEvent = await testApp().post('/events').set('Cookie', other.cookie).send({ title: 'Other', description: 'd', venue: 'v', startsAt: '2026-12-01T18:00:00Z' });
