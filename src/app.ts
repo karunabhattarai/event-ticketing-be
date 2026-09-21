@@ -11,6 +11,7 @@ import { checkoutRouter } from './modules/checkout/routes';
 import { redirectPaymentRouter } from './modules/payment/redirect';
 import { dynamicQrPaymentRouter } from './modules/payment/dynamicQr';
 import { orderStatusRouter } from './modules/orders/statusRoutes';
+import { organizerOrdersRouter } from './modules/orders/organizerRoutes';
 
 export function createApp(): Express {
   const app = express();
@@ -30,6 +31,7 @@ export function createApp(): Express {
   app.use('/payment/redirect', redirectPaymentRouter);
   app.use('/payment/dynamic-qr', dynamicQrPaymentRouter);
   app.use('/orders', orderStatusRouter);
+  app.use('/events/:eventId/orders', organizerOrdersRouter);
 
   app.use(errorHandler);
   return app;
