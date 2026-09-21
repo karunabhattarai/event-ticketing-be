@@ -4,6 +4,7 @@ import { requireOrganizer } from '../../middleware/requireOrganizer';
 import { AppError } from '../../middleware/errorHandler';
 import { getOwnedEventOrThrow } from '../events/service';
 import { fulfillOrder } from '../fulfillment/service';
+import { resendRateLimiter } from '../../middleware/rateLimiters';
 
 export const organizerOrdersRouter = Router({ mergeParams: true });
 
@@ -44,7 +45,7 @@ organizerOrdersRouter.get('/', requireOrganizer, async (req, res, next) => {
   }
 });
 
-organizerOrdersRouter.post('/:orderId/resend', requireOrganizer, async (req, res, next) => {
+organizerOrdersRouter.post('/:orderId/resend', requireOrganizer, resendRateLimiter, async (req, res, next) => {
   try {
     await getOwnedEventOrThrow(req.params.eventId, req.organizerId!);
 
@@ -60,7 +61,8 @@ organizerOrdersRouter.post('/:orderId/resend', requireOrganizer, async (req, res
       throw new AppError(400, 'Order has not been paid — nothing to resend');
     }
 
-    await fulfillOrder(order.id);
+    const result = await fulfillOrder(order.id);
+    if (!result.emailSent) throw new AppError(502, 'Failed to send ticket email — please try again shortly');
     res.status(200).json({ ok: true });
   } catch (err) {
     next(err);

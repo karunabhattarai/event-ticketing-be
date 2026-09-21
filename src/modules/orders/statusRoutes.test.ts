@@ -4,9 +4,11 @@ import { truncateAll } from '../../../tests/helpers/testDb';
 import { prisma } from '../../db/client';
 
 vi.mock('@arbyte-solutions/mail-service', () => ({ sendMail: vi.fn(async () => {}) }));
+import { sendMail } from '@arbyte-solutions/mail-service';
 
 beforeEach(async () => {
   await truncateAll();
+  vi.mocked(sendMail).mockReset().mockResolvedValue(undefined as never);
 });
 
 async function setupOrder() {
@@ -62,5 +64,14 @@ describe('POST /orders/:id/resend', () => {
     const order = await setupOrder();
     const res = await testApp().post(`/orders/${order.id}/resend`).query({ token: order.accessToken });
     expect(res.status).toBe(400);
+  });
+
+  it('502s when the ticket email actually fails to send', async () => {
+    vi.mocked(sendMail).mockRejectedValueOnce(new Error('smtp down'));
+    const order = await prisma.order.create({
+      data: { guestEmail: 'b@example.com', guestName: 'B', status: 'paid', paidAt: new Date(), totalAmount: 800, paymentMethod: 'redirect', prn: 'PRN-RESEND-3' },
+    });
+    const res = await testApp().post(`/orders/${order.id}/resend`).query({ token: order.accessToken });
+    expect(res.status).toBe(502);
   });
 });

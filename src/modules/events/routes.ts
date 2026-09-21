@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../../db/client';
 import { requireOrganizer } from '../../middleware/requireOrganizer';
 import { AppError } from '../../middleware/errorHandler';
@@ -106,7 +107,10 @@ eventsRouter.get('/mine/stats', requireOrganizer, async (req, res, next) => {
     }),
   ]);
 
-  const revenue = paidItems.reduce((sum, item) => sum + Number(item.unitPrice) * item.quantity, 0);
+  const revenue = paidItems.reduce(
+    (sum, item) => sum.add(item.unitPrice.mul(item.quantity)),
+    new Prisma.Decimal(0)
+  );
 
   res.status(200).json({
     ticketsSold,

@@ -4,6 +4,7 @@ import { prisma } from '../../db/client';
 import { hashPassword, verifyPassword, signJwt, authCookieOptions } from '../../lib/auth';
 import { AppError } from '../../middleware/errorHandler';
 import { env } from '../../env';
+import { authRateLimiter } from '../../middleware/rateLimiters';
 
 const registerSchema = z.object({
   email: z.string().email(),
@@ -18,7 +19,7 @@ const loginSchema = z.object({
 
 export const organizerAuthRouter = Router();
 
-organizerAuthRouter.post('/register', async (req, res, next) => {
+organizerAuthRouter.post('/register', authRateLimiter, async (req, res, next) => {
   try {
     const body = registerSchema.parse(req.body);
 
@@ -39,7 +40,7 @@ organizerAuthRouter.post('/register', async (req, res, next) => {
   }
 });
 
-organizerAuthRouter.post('/login', async (req, res, next) => {
+organizerAuthRouter.post('/login', authRateLimiter, async (req, res, next) => {
   try {
     const body = loginSchema.parse(req.body);
 

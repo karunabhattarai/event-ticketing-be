@@ -16,9 +16,17 @@ checkinRouter.post('/:code', requireOrganizer, async (req, res, next) => {
         id: decoded.ticketId,
         orderItem: { ticketTier: { eventId: decoded.eventId, event: { organizerId: req.organizerId! } } },
       },
-      include: { orderItem: { include: { order: { include: { buyer: true } }, ticketTier: true } } },
+      include: {
+        orderItem: {
+          include: { order: { include: { buyer: true } }, ticketTier: { include: { event: true } } },
+        },
+      },
     });
     if (!ticket) throw new AppError(404, 'Ticket not found for your events');
+
+    if (ticket.orderItem.ticketTier.event.status === 'cancelled') {
+      throw new AppError(400, 'Event has been cancelled');
+    }
 
     if (ticket.orderItem.order.status === 'refunded' || ticket.orderItem.order.status === 'failed') {
       throw new AppError(400, 'Ticket belongs to a refunded or failed order');

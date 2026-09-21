@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { prisma } from '../../db/client';
 import { AppError } from '../../middleware/errorHandler';
 import { fulfillOrder } from '../fulfillment/service';
+import { resendRateLimiter } from '../../middleware/rateLimiters';
 
 export const orderStatusRouter = Router();
 
@@ -24,7 +25,7 @@ orderStatusRouter.get('/:id', async (req, res, next) => {
   }
 });
 
-orderStatusRouter.post('/:id/resend', async (req, res, next) => {
+orderStatusRouter.post('/:id/resend', resendRateLimiter, async (req, res, next) => {
   try {
     const token = req.query.token;
     if (typeof token !== 'string' || !token) throw new AppError(403, 'Forbidden');
@@ -35,7 +36,8 @@ orderStatusRouter.post('/:id/resend', async (req, res, next) => {
       throw new AppError(400, 'Order has not been paid — nothing to resend');
     }
 
-    await fulfillOrder(order.id);
+    const result = await fulfillOrder(order.id);
+    if (!result.emailSent) throw new AppError(502, 'Failed to send ticket email — please try again shortly');
     res.status(200).json({ ok: true });
   } catch (err) {
     next(err);

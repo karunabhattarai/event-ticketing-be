@@ -89,6 +89,15 @@ describe('POST /events/:eventId/orders/:orderId/resend', () => {
     expect(res.status).toBe(404);
     expect(sendMail).not.toHaveBeenCalled();
   });
+
+  it('502s when the ticket email actually fails to send', async () => {
+    const { cookie, eventId, orderId } = await setupFulfilledOrder();
+    await prisma.order.update({ where: { id: orderId }, data: { status: 'paid', paidAt: new Date() } });
+    vi.mocked(sendMail).mockRejectedValueOnce(new Error('smtp down'));
+
+    const res = await testApp().post(`/events/${eventId}/orders/${orderId}/resend`).set('Cookie', cookie);
+    expect(res.status).toBe(502);
+  });
 });
 
 describe('POST /events/:eventId/orders/:orderId/refund', () => {

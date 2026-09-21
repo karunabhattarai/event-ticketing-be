@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '../../db/client';
 import { AppError } from '../../middleware/errorHandler';
 import crypto from 'crypto';
@@ -25,10 +26,21 @@ export async function createOrder(params: {
   const event = tiers[0].event;
   if (event.status !== 'published') throw new AppError(400, 'Event is not available for purchase');
 
-  let totalAmount = 0;
+  const now = new Date();
   for (const item of params.items) {
     const tier = tiers.find((t) => t.id === item.tierId)!;
-    totalAmount += Number(tier.price) * item.quantity;
+    if (tier.salesStartAt && tier.salesStartAt > now) {
+      throw new AppError(400, `Sales for ${tier.name} have not started yet`);
+    }
+    if (tier.salesEndAt && tier.salesEndAt < now) {
+      throw new AppError(400, `Sales for ${tier.name} have ended`);
+    }
+  }
+
+  let totalAmount = new Prisma.Decimal(0);
+  for (const item of params.items) {
+    const tier = tiers.find((t) => t.id === item.tierId)!;
+    totalAmount = totalAmount.add(tier.price.mul(item.quantity));
   }
 
   const prn = `ORDER-${crypto.randomUUID()}`;

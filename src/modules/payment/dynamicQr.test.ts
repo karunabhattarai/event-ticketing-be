@@ -3,6 +3,9 @@ import { testApp } from '../../../tests/helpers/testApp';
 import { truncateAll } from '../../../tests/helpers/testDb';
 import { prisma } from '../../db/client';
 
+const closeMock = vi.fn();
+let lastSubscribeCallbacks: { onPaymentSuccess: () => void; onError: () => void } | undefined;
+
 vi.mock('@arbyte-solutions/fonepay-service', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@arbyte-solutions/fonepay-service')>();
   return {
@@ -14,7 +17,10 @@ vi.mock('@arbyte-solutions/fonepay-service', async (importOriginal) => {
       success: true,
     })),
     checkDynamicQrStatus: vi.fn(async () => ({ paymentStatus: 'pending', fonepayTraceId: '', prn: '', merchantCode: '' })),
-    subscribeDynamicQrStatus: vi.fn(() => ({ close: vi.fn() })),
+    subscribeDynamicQrStatus: vi.fn((_url: string, callbacks: { onPaymentSuccess: () => void; onError: () => void }) => {
+      lastSubscribeCallbacks = callbacks;
+      return { close: closeMock };
+    }),
   };
 });
 
@@ -26,6 +32,8 @@ import { checkDynamicQrStatus } from '@arbyte-solutions/fonepay-service';
 
 beforeEach(async () => {
   await truncateAll();
+  closeMock.mockClear();
+  lastSubscribeCallbacks = undefined;
 });
 
 async function setupPendingQrOrder() {
@@ -50,6 +58,16 @@ describe('POST /payment/dynamic-qr/:orderId/generate', () => {
     const order = await setupPendingQrOrder();
     const res = await testApp().post(`/payment/dynamic-qr/${order.id}/generate`).query({ token: 'wrong-token' });
     expect(res.status).toBe(403);
+  });
+
+  it('closes the websocket when onError fires', async () => {
+    const order = await setupPendingQrOrder();
+    const res = await testApp().post(`/payment/dynamic-qr/${order.id}/generate`).query({ token: order.accessToken });
+    expect(res.status).toBe(200);
+    expect(closeMock).not.toHaveBeenCalled();
+
+    lastSubscribeCallbacks?.onError();
+    expect(closeMock).toHaveBeenCalledTimes(1);
   });
 });
 

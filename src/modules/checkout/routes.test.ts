@@ -64,4 +64,43 @@ describe('POST /checkout', () => {
       .send({ items: [{ tierId: a.tierId, quantity: 1 }, { tierId: b.tierId, quantity: 1 }], guestEmail: 'x@example.com', guestName: 'X', paymentMethod: 'redirect' });
     expect(res.status).toBe(400);
   });
+
+  it('rejects checkout when the tier sales window has not started yet', async () => {
+    const { tierId } = await setupPublishedEventWithTier(10);
+    await prisma.ticketTier.update({
+      where: { id: tierId },
+      data: { salesStartAt: new Date(Date.now() + 60 * 60 * 1000) },
+    });
+    const res = await testApp()
+      .post('/checkout')
+      .send({ items: [{ tierId, quantity: 1 }], guestEmail: 'buyer@example.com', guestName: 'Buyer', paymentMethod: 'redirect' });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects checkout when the tier sales window has already ended', async () => {
+    const { tierId } = await setupPublishedEventWithTier(10);
+    await prisma.ticketTier.update({
+      where: { id: tierId },
+      data: { salesEndAt: new Date(Date.now() - 60 * 60 * 1000) },
+    });
+    const res = await testApp()
+      .post('/checkout')
+      .send({ items: [{ tierId, quantity: 1 }], guestEmail: 'buyer@example.com', guestName: 'Buyer', paymentMethod: 'redirect' });
+    expect(res.status).toBe(400);
+  });
+
+  it('allows checkout when the tier sales window includes now', async () => {
+    const { tierId } = await setupPublishedEventWithTier(10);
+    await prisma.ticketTier.update({
+      where: { id: tierId },
+      data: {
+        salesStartAt: new Date(Date.now() - 60 * 60 * 1000),
+        salesEndAt: new Date(Date.now() + 60 * 60 * 1000),
+      },
+    });
+    const res = await testApp()
+      .post('/checkout')
+      .send({ items: [{ tierId, quantity: 1 }], guestEmail: 'buyer@example.com', guestName: 'Buyer', paymentMethod: 'redirect' });
+    expect(res.status).toBe(201);
+  });
 });

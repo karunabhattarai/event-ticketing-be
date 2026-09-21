@@ -19,7 +19,7 @@ async function setupValidTicket() {
   const ticket = await prisma.ticket.create({ data: { orderItemId: item.id, code: 'placeholder' } });
   const code = signTicketCode(ticket.id, event.id);
   await prisma.ticket.update({ where: { id: ticket.id }, data: { code } });
-  return { cookie, code };
+  return { cookie, code, eventId: event.id };
 }
 
 describe('POST /checkin/:code', () => {
@@ -57,6 +57,14 @@ describe('POST /checkin/:code', () => {
     const ticket = await prisma.ticket.findUniqueOrThrow({ where: { id: decoded!.ticketId } });
     const orderItem = await prisma.orderItem.findUniqueOrThrow({ where: { id: ticket.orderItemId } });
     await prisma.order.update({ where: { id: orderItem.orderId }, data: { status: 'refunded' } });
+
+    const res = await testApp().post(`/checkin/${encodeURIComponent(code)}`).set('Cookie', cookie);
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects check-in for a ticket belonging to a cancelled event', async () => {
+    const { cookie, code, eventId } = await setupValidTicket();
+    await prisma.event.update({ where: { id: eventId }, data: { status: 'cancelled' } });
 
     const res = await testApp().post(`/checkin/${encodeURIComponent(code)}`).set('Cookie', cookie);
     expect(res.status).toBe(400);

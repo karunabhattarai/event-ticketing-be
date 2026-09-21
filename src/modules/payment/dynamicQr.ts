@@ -53,6 +53,7 @@ dynamicQrPaymentRouter.post('/:orderId/generate', async (req, res, next) => {
     });
 
     // Websocket primary path — best-effort, fallback polling covers a dropped socket.
+    let closeTimer: NodeJS.Timeout;
     const { close } = subscribeDynamicQrStatus(qr.thirdpartyQrWebSocketUrl, {
       onPaymentSuccess: () => {
         // Explicit .catch — this runs outside any request's try/catch, so an
@@ -62,15 +63,27 @@ dynamicQrPaymentRouter.post('/:orderId/generate', async (req, res, next) => {
         // this particular attempt fails.
         settleOrder(order.id, 'paid')
           .catch((err) => console.error(`websocket settleOrder failed for order ${order.id}`, err))
-          .finally(() => close());
+          .finally(() => {
+            clearTimeout(closeTimer);
+            close();
+          });
       },
       onError: () => {
-        // swallow — GET /status's polling fallback will resolve this order
+        // swallow the payment-status implication — GET /status's polling fallback
+        // will resolve this order — but still release the socket, which onError
+        // otherwise leaks indefinitely.
+        clearTimeout(closeTimer);
+        close();
       },
     });
 
+    // No success/error event may ever fire (buyer abandons the checkout) — close
+    // the socket once the QR's own advertised validity window elapses, so an
+    // abandoned checkout doesn't leak an open websocket for the life of the process.
+    closeTimer = setTimeout(() => close(), env.orderExpiryMinutes * 60 * 1000);
+
     const qrImageDataUrl = await QRCode.toDataURL(qr.qrMessage);
-    res.status(200).json({ qrImageDataUrl, expiresInSeconds: 15 * 60 });
+    res.status(200).json({ qrImageDataUrl, expiresInSeconds: env.orderExpiryMinutes * 60 });
   } catch (err) {
     next(err);
   }

@@ -5,7 +5,7 @@ import { prisma } from '../../db/client';
 import { signTicketCode } from '../../lib/ticketCode';
 import { env } from '../../env';
 
-export async function fulfillOrder(orderId: string): Promise<void> {
+export async function fulfillOrder(orderId: string): Promise<{ emailSent: boolean }> {
   // Claim + mint run in one transaction: if minting throws for any reason
   // (e.g. a transient DB error), the whole transaction rolls back, including
   // the fulfilledAt claim — so the order is left exactly as it was and the
@@ -46,7 +46,7 @@ export async function fulfillOrder(orderId: string): Promise<void> {
   // guestEmail is only populated for guest checkout; a logged-in buyer's
   // order has buyerId set instead, so fall back to the account's email.
   const recipientEmail = refreshedOrder.guestEmail ?? refreshedOrder.buyer?.email;
-  if (!recipientEmail) return;
+  if (!recipientEmail) return { emailSent: false };
 
   const attachments = [];
   const ticketLines: string[] = [];
@@ -80,7 +80,7 @@ export async function fulfillOrder(orderId: string): Promise<void> {
     );
   } catch (err) {
     console.error(`fulfillOrder: email send failed for order ${orderId}`, err);
-    return; // order stays 'paid' — tickets are valid, resend can be retried later
+    return { emailSent: false }; // order stays 'paid' — tickets are valid, resend can be retried later
   }
 
   // Conditional: only a 'paid' order transitions to 'fulfilled' — never overwrites
@@ -89,4 +89,5 @@ export async function fulfillOrder(orderId: string): Promise<void> {
     where: { id: orderId, status: 'paid' },
     data: { status: 'fulfilled' },
   });
+  return { emailSent: true };
 }
