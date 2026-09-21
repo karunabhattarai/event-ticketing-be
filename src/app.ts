@@ -8,6 +8,7 @@ import { buyerAuthRouter } from './modules/buyerAuth/routes';
 import { eventsRouter } from './modules/events/routes';
 import { tiersRouter } from './modules/tiers/routes';
 import { checkoutRouter } from './modules/checkout/routes';
+import { redirectPaymentRouter } from './modules/payment/redirect';
 
 export function createApp(): Express {
   const app = express();
@@ -24,6 +25,7 @@ export function createApp(): Express {
   app.use('/events', eventsRouter);
   app.use('/events/:eventId/tiers', tiersRouter);
   app.use('/checkout', checkoutRouter);
+  app.use('/payment/redirect', redirectPaymentRouter);
 
   app.use(errorHandler);
   return app;
