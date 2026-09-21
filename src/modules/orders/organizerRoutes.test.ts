@@ -80,3 +80,53 @@ describe('POST /events/:eventId/orders/:orderId/resend', () => {
     expect(sendMail).not.toHaveBeenCalled();
   });
 });
+
+describe('POST /events/:eventId/orders/:orderId/refund', () => {
+  it('marks the order refunded and voids its valid tickets', async () => {
+    const { cookie, eventId, orderId } = await setupFulfilledOrder();
+    // Manually mark paid + fulfilled with a ticket for this test's purposes:
+    const order = await prisma.order.update({ where: { id: orderId }, data: { status: 'fulfilled', paidAt: new Date(), fulfilledAt: new Date() } });
+    const item = await prisma.orderItem.findFirstOrThrow({ where: { orderId } });
+    const ticket = await prisma.ticket.create({ data: { orderItemId: item.id, code: 'test-code-for-refund' } });
+
+    const res = await testApp().post(`/events/${eventId}/orders/${orderId}/refund`).set('Cookie', cookie);
+    expect(res.status).toBe(200);
+
+    const updatedOrder = await prisma.order.findUniqueOrThrow({ where: { id: orderId } });
+    expect(updatedOrder.status).toBe('refunded');
+
+    const updatedTicket = await prisma.ticket.findUniqueOrThrow({ where: { id: ticket.id } });
+    expect(updatedTicket.status).toBe('void');
+  });
+
+  it('does not un-use an already-used ticket on refund', async () => {
+    const { cookie, eventId, orderId } = await setupFulfilledOrder();
+    await prisma.order.update({ where: { id: orderId }, data: { status: 'fulfilled', paidAt: new Date(), fulfilledAt: new Date() } });
+    const item = await prisma.orderItem.findFirstOrThrow({ where: { orderId } });
+    const usedTicket = await prisma.ticket.create({ data: { orderItemId: item.id, code: 'used-code', status: 'used', checkedInAt: new Date() } });
+
+    await testApp().post(`/events/${eventId}/orders/${orderId}/refund`).set('Cookie', cookie);
+
+    const stillUsed = await prisma.ticket.findUniqueOrThrow({ where: { id: usedTicket.id } });
+    expect(stillUsed.status).toBe('used');
+  });
+
+  it('rejects refunding an order that was never paid', async () => {
+    const { cookie, eventId, orderId } = await setupFulfilledOrder(); // still pending
+    const res = await testApp().post(`/events/${eventId}/orders/${orderId}/refund`).set('Cookie', cookie);
+    expect(res.status).toBe(400);
+    const order = await prisma.order.findUniqueOrThrow({ where: { id: orderId } });
+    expect(order.status).toBe('pending');
+  });
+
+  it("404s refunding an order that belongs to a different organizer's event, even though this organizer owns eventId", async () => {
+    const { cookie, eventId } = await setupFulfilledOrder('org-a-refund@example.com');
+    const other = await setupFulfilledOrder('org-b-refund@example.com');
+    await prisma.order.update({ where: { id: other.orderId }, data: { status: 'paid', paidAt: new Date() } });
+
+    const res = await testApp().post(`/events/${eventId}/orders/${other.orderId}/refund`).set('Cookie', cookie);
+    expect(res.status).toBe(404);
+    const untouched = await prisma.order.findUniqueOrThrow({ where: { id: other.orderId } });
+    expect(untouched.status).toBe('paid');
+  });
+});

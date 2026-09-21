@@ -53,3 +53,36 @@ organizerOrdersRouter.post('/:orderId/resend', requireOrganizer, async (req, res
     next(err);
   }
 });
+
+organizerOrdersRouter.post('/:orderId/refund', requireOrganizer, async (req, res, next) => {
+  try {
+    await getOwnedEventOrThrow(req.params.eventId, req.organizerId!);
+
+    // Same event-scoping as resend, above — an owned eventId doesn't imply
+    // ownership of an arbitrary orderId.
+    const order = await prisma.order.findFirst({
+      where: { id: req.params.orderId, items: { some: { ticketTier: { eventId: req.params.eventId } } } },
+    });
+    if (!order) throw new AppError(404, 'Order not found');
+    // Only a paid/fulfilled order actually reserved stock and issued
+    // tickets worth reversing — refunding a pending/failed order would
+    // mark it refunded without ever releasing its reservation, and the
+    // expiry sweep (Task 21) only ever looks at status='pending', so that
+    // stock would never be released.
+    if (order.status !== 'paid' && order.status !== 'fulfilled') {
+      throw new AppError(400, 'Only a paid or fulfilled order can be refunded');
+    }
+
+    await prisma.$transaction([
+      prisma.order.update({ where: { id: order.id }, data: { status: 'refunded' } }),
+      prisma.ticket.updateMany({
+        where: { orderItem: { orderId: order.id }, status: 'valid' },
+        data: { status: 'void' },
+      }),
+    ]);
+
+    res.status(200).json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
