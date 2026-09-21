@@ -5,22 +5,36 @@ import { signTicketCode } from '../../lib/ticketCode';
 import { env } from '../../env';
 
 export async function fulfillOrder(orderId: string): Promise<void> {
-  const order = await prisma.order.findUniqueOrThrow({
-    where: { id: orderId },
-    include: { items: { include: { ticketTier: { include: { event: true } }, tickets: true } } },
+  // Atomic claim on ticket-minting: fulfilledAt now means "tickets have been
+  // minted for this order", set here at claim time (not tied to email success
+  // or the final status write). Only the caller that flips fulfilledAt from
+  // null mints tickets — concurrent callers (buyer resend, organizer resend,
+  // expiry sweep's paid-reconciliation branch) all fall through to re-sending
+  // the email without re-minting.
+  const claim = await prisma.order.updateMany({
+    where: { id: orderId, fulfilledAt: null },
+    data: { fulfilledAt: new Date() },
   });
 
-  // Idempotent ticket minting: only create tickets for OrderItems that don't already have them
-  // (covers the resend-ticket-email action calling this a second time).
-  for (const item of order.items) {
-    if (item.tickets.length > 0) continue;
+  if (claim.count === 1) {
+    const order = await prisma.order.findUniqueOrThrow({
+      where: { id: orderId },
+      include: { items: { include: { ticketTier: { include: { event: true } }, tickets: true } } },
+    });
 
-    for (let i = 0; i < item.quantity; i++) {
-      const ticket = await prisma.ticket.create({ data: { orderItemId: item.id, code: 'pending' } });
-      const code = signTicketCode(ticket.id, item.ticketTier.eventId);
-      await prisma.ticket.update({ where: { id: ticket.id }, data: { code } });
+    for (const item of order.items) {
+      if (item.tickets.length > 0) continue; // defensive; claim already prevents this path from racing
+
+      for (let i = 0; i < item.quantity; i++) {
+        const ticket = await prisma.ticket.create({ data: { orderItemId: item.id, code: 'pending' } });
+        const code = signTicketCode(ticket.id, item.ticketTier.eventId);
+        await prisma.ticket.update({ where: { id: ticket.id }, data: { code } });
+      }
     }
   }
+  // claim.count === 0 means tickets are already minted (either by an earlier call to
+  // this function, or this order is being fulfilled elsewhere) — fall through to the
+  // email send below unconditionally, since resend must always be able to re-send.
 
   const refreshedOrder = await prisma.order.findUniqueOrThrow({
     where: { id: orderId },
@@ -67,5 +81,10 @@ export async function fulfillOrder(orderId: string): Promise<void> {
     return; // order stays 'paid' — tickets are valid, resend can be retried later
   }
 
-  await prisma.order.update({ where: { id: orderId }, data: { status: 'fulfilled', fulfilledAt: new Date() } });
+  // Conditional: only a 'paid' order transitions to 'fulfilled' — never overwrites
+  // 'refunded'/'failed'/any other terminal status a concurrent refund may have set.
+  await prisma.order.updateMany({
+    where: { id: orderId, status: 'paid' },
+    data: { status: 'fulfilled' },
+  });
 }

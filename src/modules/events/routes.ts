@@ -51,21 +51,26 @@ eventsRouter.patch('/:id', requireOrganizer, async (req, res, next) => {
   }
 });
 
-eventsRouter.get('/mine', requireOrganizer, async (req, res) => {
-  // include tiers — the organizer dashboard's per-event sold-count display
-  // (frontend plan Task 12) needs quantitySold/quantityTotal per tier here.
-  const events = await prisma.event.findMany({
-    where: { organizerId: req.organizerId! },
-    include: { tiers: true },
-    orderBy: { createdAt: 'desc' },
-  });
-  res.status(200).json(events);
+eventsRouter.get('/mine', requireOrganizer, async (req, res, next) => {
+  try {
+    // include tiers — the organizer dashboard's per-event sold-count display
+    // (frontend plan Task 12) needs quantitySold/quantityTotal per tier here.
+    const events = await prisma.event.findMany({
+      where: { organizerId: req.organizerId! },
+      include: { tiers: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    res.status(200).json(events);
+  } catch (err) {
+    next(err);
+  }
 });
 
 // Registered before GET /:id — Express matches routes in declaration order,
 // and '/mine/stats' would otherwise be swallowed by the generic '/:id'
 // handler below (same reasoning as '/mine' itself, see the note above).
-eventsRouter.get('/mine/stats', requireOrganizer, async (req, res) => {
+eventsRouter.get('/mine/stats', requireOrganizer, async (req, res, next) => {
+  try {
   // Organizer-wide dashboard tiles (spec UI screen 7: "tickets sold, revenue,
   // checked-in"), aggregated across every event the organizer owns — distinct
   // from Task 17's GET /events/:eventId/orders stats, which is scoped to one event.
@@ -108,17 +113,24 @@ eventsRouter.get('/mine/stats', requireOrganizer, async (req, res) => {
     revenue: revenue.toString(),
     ticketsCheckedIn,
   });
+  } catch (err) {
+    next(err);
+  }
 });
 
-eventsRouter.get('/', async (_req, res) => {
-  // include tiers — the public listing page's EventCard needs tier prices
-  // to render "From Rs. X" (frontend plan Task 3).
-  const events = await prisma.event.findMany({
-    where: { status: 'published' },
-    include: { tiers: true },
-    orderBy: { startsAt: 'asc' },
-  });
-  res.status(200).json(events);
+eventsRouter.get('/', async (_req, res, next) => {
+  try {
+    // include tiers — the public listing page's EventCard needs tier prices
+    // to render "From Rs. X" (frontend plan Task 3).
+    const events = await prisma.event.findMany({
+      where: { status: 'published' },
+      include: { tiers: true },
+      orderBy: { startsAt: 'asc' },
+    });
+    res.status(200).json(events);
+  } catch (err) {
+    next(err);
+  }
 });
 
 eventsRouter.get('/:id', async (req, res, next) => {

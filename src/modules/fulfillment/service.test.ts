@@ -99,4 +99,22 @@ describe('fulfillOrder', () => {
     const call = vi.mocked(sendMail).mock.calls[0][1];
     expect(call.to).toBe('account-holder@example.com');
   });
+
+  it('does not double-mint tickets when called concurrently for the same order', async () => {
+    const order = await setupPaidOrder(2);
+    await Promise.all([fulfillOrder(order.id), fulfillOrder(order.id)]);
+
+    const tickets = await prisma.ticket.count({ where: { orderItem: { orderId: order.id } } });
+    expect(tickets).toBe(2);
+  });
+
+  it('does not overwrite a refunded order back to fulfilled', async () => {
+    const order = await setupPaidOrder(1);
+    await prisma.order.update({ where: { id: order.id }, data: { status: 'refunded' } });
+
+    await fulfillOrder(order.id);
+
+    const updated = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+    expect(updated.status).toBe('refunded');
+  });
 });
