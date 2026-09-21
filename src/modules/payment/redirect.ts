@@ -3,6 +3,7 @@ import { initiatePayment, verifyResponse, FonepayCallbackResponse } from '@arbyt
 import { prisma } from '../../db/client';
 import { AppError } from '../../middleware/errorHandler';
 import { releaseReservation } from '../checkout/service';
+import { fulfillOrder } from '../fulfillment/service';
 import { env } from '../../env';
 
 export const redirectPaymentRouter = Router();
@@ -54,10 +55,13 @@ redirectPaymentRouter.get('/return', async (req, res, next) => {
           ? { status: 'paid', paidAt: new Date(), fonepayUid: query.UID, fonepayBankCode: query.BC }
           : { status: 'failed' },
       });
-      if (claim.count === 1 && !ok) {
-        await releaseReservation(order.id);
+      if (claim.count === 1) {
+        if (ok) {
+          await fulfillOrder(order.id);
+        } else {
+          await releaseReservation(order.id);
+        }
       }
-      // Task 15 adds fulfillOrder(order.id) here for the claim.count === 1 && ok case.
     }
 
     res.redirect(302, `${env.appBaseUrl}/order/${order.id}/status?token=${order.accessToken}`);

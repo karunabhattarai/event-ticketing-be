@@ -12,6 +12,10 @@ vi.mock('@arbyte-solutions/fonepay-service', async (importOriginal) => {
   };
 });
 
+vi.mock('@arbyte-solutions/mail-service', () => ({
+  sendMail: vi.fn(async () => {}),
+}));
+
 import { verifyResponse } from '@arbyte-solutions/fonepay-service';
 
 beforeEach(async () => {
@@ -52,7 +56,9 @@ describe('GET /payment/redirect/return', () => {
 
     expect(res.status).toBe(302);
     const updated = await prisma.order.findUnique({ where: { id: order.id } });
-    expect(updated?.status).toBe('paid');
+    // fulfillOrder (Task 15) runs synchronously after the paid claim and, with
+    // sendMail mocked to succeed, advances the order straight to 'fulfilled'.
+    expect(updated?.status).toBe('fulfilled');
   });
 
   it('marks the order failed and releases stock on an invalid callback', async () => {

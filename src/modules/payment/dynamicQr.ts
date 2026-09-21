@@ -8,6 +8,7 @@ import {
 import { prisma } from '../../db/client';
 import { AppError } from '../../middleware/errorHandler';
 import { releaseReservation } from '../checkout/service';
+import { fulfillOrder } from '../fulfillment/service';
 import { env } from '../../env';
 
 export const dynamicQrPaymentRouter = Router();
@@ -34,10 +35,11 @@ async function settleOrder(orderId: string, outcome: 'paid' | 'failed') {
   });
   if (claim.count === 0) return;
 
-  if (outcome === 'failed') {
+  if (outcome === 'paid') {
+    await fulfillOrder(orderId);
+  } else {
     await releaseReservation(orderId);
   }
-  // Task 15 adds fulfillOrder(orderId) here for the outcome === 'paid' case.
 }
 
 dynamicQrPaymentRouter.post('/:orderId/generate', async (req, res, next) => {

@@ -18,6 +18,10 @@ vi.mock('@arbyte-solutions/fonepay-service', async (importOriginal) => {
   };
 });
 
+vi.mock('@arbyte-solutions/mail-service', () => ({
+  sendMail: vi.fn(async () => {}),
+}));
+
 import { checkDynamicQrStatus } from '@arbyte-solutions/fonepay-service';
 
 beforeEach(async () => {
