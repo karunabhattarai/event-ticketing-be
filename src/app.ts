@@ -5,6 +5,7 @@ import { errorHandler } from './middleware/errorHandler';
 import { env } from './env';
 import { organizerAuthRouter } from './modules/organizerAuth/routes';
 import { buyerAuthRouter } from './modules/buyerAuth/routes';
+import { buyerOrdersRouter } from './modules/buyerAuth/ordersRoutes';
 import { eventsRouter } from './modules/events/routes';
 import { tiersRouter } from './modules/tiers/routes';
 import { checkoutRouter } from './modules/checkout/routes';
@@ -26,6 +27,7 @@ export function createApp(): Express {
 
   app.use('/organizer/auth', organizerAuthRouter);
   app.use('/buyer/auth', buyerAuthRouter);
+  app.use('/buyer/orders', buyerOrdersRouter);
   app.use('/events', eventsRouter);
   app.use('/events/:eventId/tiers', tiersRouter);
   app.use('/checkout', checkoutRouter);
