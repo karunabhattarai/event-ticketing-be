@@ -14,6 +14,7 @@ import { dynamicQrPaymentRouter } from './modules/payment/dynamicQr';
 import { orderStatusRouter } from './modules/orders/statusRoutes';
 import { organizerOrdersRouter } from './modules/orders/organizerRoutes';
 import { checkinRouter } from './modules/checkin/routes';
+import { expiryRouter } from './modules/orders/expiryRoutes';
 
 export function createApp(): Express {
   const app = express();
@@ -36,6 +37,7 @@ export function createApp(): Express {
   app.use('/orders', orderStatusRouter);
   app.use('/events/:eventId/orders', organizerOrdersRouter);
   app.use('/checkin', checkinRouter);
+  app.use('/internal/orders', expiryRouter);
 
   app.use(errorHandler);
   return app;

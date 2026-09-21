@@ -29,4 +29,6 @@ export const env = {
     pass: process.env.SMTP_PASS ?? '',
     from: process.env.SMTP_FROM ?? '',
   },
+  orderExpiryMinutes: Number(process.env.ORDER_EXPIRY_MINUTES ?? 15),
+  cronSecret: required('CRON_SECRET'),
 };
