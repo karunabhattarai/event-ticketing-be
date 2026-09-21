@@ -1,0 +1,132 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Organizer {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  createdAt    DateTime @default(now())
+  events       Event[]
+}
+
+model Buyer {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String?
+  name         String
+  createdAt    DateTime @default(now())
+  orders       Order[]
+}
+
+enum EventStatus {
+  draft
+  published
+  cancelled
+}
+
+model Event {
+  id          String      @id @default(uuid())
+  organizerId String
+  organizer   Organizer   @relation(fields: [organizerId], references: [id])
+  title       String
+  description String
+  venue       String
+  startsAt    DateTime
+  status      EventStatus @default(draft)
+  createdAt   DateTime    @default(now())
+  tiers       TicketTier[]
+
+  @@index([organizerId])
+  @@index([status])
+}
+
+model TicketTier {
+  id            String   @id @default(uuid())
+  eventId       String
+  event         Event    @relation(fields: [eventId], references: [id])
+  name          String
+  price         Decimal  @db.Decimal(10, 2)
+  currency      String   @default("NPR")
+  quantityTotal Int
+  quantitySold  Int      @default(0)
+  salesStartAt  DateTime?
+  salesEndAt    DateTime?
+  orderItems    OrderItem[]
+
+  @@index([eventId])
+}
+
+enum OrderStatus {
+  pending
+  paid
+  fulfilled
+  failed
+  refunded
+}
+
+enum PaymentMethod {
+  redirect
+  dynamic_qr
+}
+
+model Order {
+  id              String        @id @default(uuid())
+  accessToken     String        @unique @default(uuid())
+  buyerId         String?
+  buyer           Buyer?        @relation(fields: [buyerId], references: [id])
+  guestEmail      String?
+  guestName       String?
+  status          OrderStatus   @default(pending)
+  totalAmount     Decimal       @db.Decimal(10, 2)
+  currency        String        @default("NPR")
+  paymentMethod   PaymentMethod
+  prn             String        @unique
+  fonepayUid      String?
+  fonepayBankCode String?
+  createdAt       DateTime      @default(now())
+  paidAt          DateTime?
+  fulfilledAt     DateTime?
+  items           OrderItem[]
+
+  @@index([buyerId])
+  @@index([status])
+}
+
+model OrderItem {
+  id           String     @id @default(uuid())
+  orderId      String
+  order        Order      @relation(fields: [orderId], references: [id])
+  ticketTierId String
+  ticketTier   TicketTier @relation(fields: [ticketTierId], references: [id])
+  quantity     Int
+  unitPrice    Decimal    @db.Decimal(10, 2)
+  tickets      Ticket[]
+
+  @@index([orderId])
+}
+
+enum TicketStatus {
+  valid
+  used
+  void
+}
+
+model Ticket {
+  id            String       @id @default(uuid())
+  orderItemId   String
+  orderItem     OrderItem    @relation(fields: [orderItemId], references: [id])
+  code          String       @unique
+  status        TicketStatus @default(valid)
+  checkedInAt   DateTime?
+  checkedInBy   String?
+
+  @@index([orderItemId])
+}
