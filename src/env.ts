@@ -32,3 +32,20 @@ export const env = {
   orderExpiryMinutes: Number(process.env.ORDER_EXPIRY_MINUTES ?? 15),
   cronSecret: required('CRON_SECRET'),
 };
+
+if (env.nodeEnv === 'production') {
+  const requiredInProd: [string, string][] = [
+    ['FONEPAY_MERCHANT_CODE', env.fonepay.merchantCode],
+    ['FONEPAY_SECRET_KEY', env.fonepay.secretKey],
+    ['FONEPAY_QR_USERNAME', env.fonepay.qrUsername],
+    ['FONEPAY_QR_PASSWORD', env.fonepay.qrPassword],
+    ['SMTP_HOST', env.smtp.host],
+    ['SMTP_USER', env.smtp.user],
+    ['SMTP_PASS', env.smtp.pass],
+    ['SMTP_FROM', env.smtp.from],
+  ];
+  const missing = requiredInProd.filter(([, value]) => !value).map(([name]) => name);
+  if (missing.length > 0) {
+    throw new Error(`Missing required production env vars: ${missing.join(', ')}`);
+  }
+}

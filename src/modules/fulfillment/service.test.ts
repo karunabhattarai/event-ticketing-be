@@ -162,7 +162,7 @@ describe('fulfillOrder', () => {
     expect(ticketsAfterFailure).toBe(0);
 
     // Restore normal behavior and confirm a subsequent call fully succeeds.
-    vi.mocked(signTicketCode).mockImplementation(actual ?? undefined);
+    vi.mocked(signTicketCode).mockImplementation(actual ?? ((id: string, eventId: string) => `sig-${id}-${eventId}`));
     await fulfillOrder(order.id);
 
     const afterSuccess = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });

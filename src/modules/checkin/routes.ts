@@ -6,7 +6,7 @@ import { verifyTicketCode } from '../../lib/ticketCode';
 
 export const checkinRouter = Router();
 
-checkinRouter.post('/:code', requireOrganizer, async (req, res, next) => {
+checkinRouter.post('/:code/check-in', requireOrganizer, async (req, res, next) => {
   try {
     const decoded = verifyTicketCode(req.params.code);
     if (!decoded) throw new AppError(400, 'Invalid ticket code');
@@ -18,7 +18,10 @@ checkinRouter.post('/:code', requireOrganizer, async (req, res, next) => {
       },
       include: {
         orderItem: {
-          include: { order: { include: { buyer: true } }, ticketTier: { include: { event: true } } },
+          include: {
+            order: { include: { buyer: { select: { name: true } } } },
+            ticketTier: { include: { event: true } },
+          },
         },
       },
     });

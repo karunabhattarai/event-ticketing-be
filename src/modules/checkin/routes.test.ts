@@ -22,32 +22,32 @@ async function setupValidTicket() {
   return { cookie, code, eventId: event.id };
 }
 
-describe('POST /checkin/:code', () => {
+describe('POST /tickets/:code/check-in', () => {
   it('checks in a valid ticket', async () => {
     const { cookie, code } = await setupValidTicket();
-    const res = await testApp().post(`/checkin/${encodeURIComponent(code)}`).set('Cookie', cookie);
+    const res = await testApp().post(`/tickets/${encodeURIComponent(code)}/check-in`).set('Cookie', cookie);
     expect(res.status).toBe(200);
     expect(res.body.result).toBe('valid');
   });
 
   it('rejects a second scan of the same ticket', async () => {
     const { cookie, code } = await setupValidTicket();
-    await testApp().post(`/checkin/${encodeURIComponent(code)}`).set('Cookie', cookie);
-    const res = await testApp().post(`/checkin/${encodeURIComponent(code)}`).set('Cookie', cookie);
+    await testApp().post(`/tickets/${encodeURIComponent(code)}/check-in`).set('Cookie', cookie);
+    const res = await testApp().post(`/tickets/${encodeURIComponent(code)}/check-in`).set('Cookie', cookie);
     expect(res.status).toBe(409);
     expect(res.body.result).toBe('already_used');
   });
 
   it('rejects a tampered code', async () => {
     const { cookie, code } = await setupValidTicket();
-    const res = await testApp().post(`/checkin/${encodeURIComponent(code + 'x')}`).set('Cookie', cookie);
+    const res = await testApp().post(`/tickets/${encodeURIComponent(code + 'x')}/check-in`).set('Cookie', cookie);
     expect(res.status).toBe(400);
   });
 
   it("rejects check-in by an organizer who doesn't own the event", async () => {
     const { code } = await setupValidTicket();
     const other = await testApp().post('/organizer/auth/register').send({ email: 'other@example.com', password: 'password123', name: 'B' });
-    const res = await testApp().post(`/checkin/${encodeURIComponent(code)}`).set('Cookie', other.headers['set-cookie']);
+    const res = await testApp().post(`/tickets/${encodeURIComponent(code)}/check-in`).set('Cookie', other.headers['set-cookie']);
     expect(res.status).toBe(404);
   });
 
@@ -58,7 +58,7 @@ describe('POST /checkin/:code', () => {
     const orderItem = await prisma.orderItem.findUniqueOrThrow({ where: { id: ticket.orderItemId } });
     await prisma.order.update({ where: { id: orderItem.orderId }, data: { status: 'refunded' } });
 
-    const res = await testApp().post(`/checkin/${encodeURIComponent(code)}`).set('Cookie', cookie);
+    const res = await testApp().post(`/tickets/${encodeURIComponent(code)}/check-in`).set('Cookie', cookie);
     expect(res.status).toBe(400);
   });
 
@@ -66,7 +66,7 @@ describe('POST /checkin/:code', () => {
     const { cookie, code, eventId } = await setupValidTicket();
     await prisma.event.update({ where: { id: eventId }, data: { status: 'cancelled' } });
 
-    const res = await testApp().post(`/checkin/${encodeURIComponent(code)}`).set('Cookie', cookie);
+    const res = await testApp().post(`/tickets/${encodeURIComponent(code)}/check-in`).set('Cookie', cookie);
     expect(res.status).toBe(400);
   });
 
@@ -83,7 +83,7 @@ describe('POST /checkin/:code', () => {
     const code = signTicketCode(ticket.id, event.id);
     await prisma.ticket.update({ where: { id: ticket.id }, data: { code } });
 
-    const res = await testApp().post(`/checkin/${encodeURIComponent(code)}`).set('Cookie', cookie);
+    const res = await testApp().post(`/tickets/${encodeURIComponent(code)}/check-in`).set('Cookie', cookie);
     expect(res.status).toBe(200);
     expect(res.body.holderName).toBe('Account Holder');
   });

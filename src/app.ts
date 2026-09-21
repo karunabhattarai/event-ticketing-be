@@ -42,7 +42,7 @@ export function createApp(): Express {
   app.use('/payment/dynamic-qr', dynamicQrPaymentRouter);
   app.use('/orders', orderStatusRouter);
   app.use('/events/:eventId/orders', organizerOrdersRouter);
-  app.use('/checkin', checkinRouter);
+  app.use('/tickets', checkinRouter);
   app.use('/internal/orders', expiryRouter);
 
   app.use(errorHandler);
