@@ -9,6 +9,7 @@ import { eventsRouter } from './modules/events/routes';
 import { tiersRouter } from './modules/tiers/routes';
 import { checkoutRouter } from './modules/checkout/routes';
 import { redirectPaymentRouter } from './modules/payment/redirect';
+import { dynamicQrPaymentRouter } from './modules/payment/dynamicQr';
 
 export function createApp(): Express {
   const app = express();
@@ -26,6 +27,7 @@ export function createApp(): Express {
   app.use('/events/:eventId/tiers', tiersRouter);
   app.use('/checkout', checkoutRouter);
   app.use('/payment/redirect', redirectPaymentRouter);
+  app.use('/payment/dynamic-qr', dynamicQrPaymentRouter);
 
   app.use(errorHandler);
   return app;
