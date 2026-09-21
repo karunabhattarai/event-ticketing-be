@@ -1,6 +1,6 @@
 import { checkStatus, checkDynamicQrStatus } from '@arbyte-solutions/fonepay-service';
 import { prisma } from '../../db/client';
-import { releaseReservation } from '../checkout/service';
+import { claimFailedAndRelease } from '../checkout/service';
 import { fulfillOrder } from '../fulfillment/service';
 import { env } from '../../env';
 
@@ -23,17 +23,15 @@ async function claimAndSettle(orderId: string, outcome: 'paid' | 'failed'): Prom
   // Same atomic-claim shape as the payment handlers (Tasks 13-14) — the sweep
   // runs concurrently with live buyer traffic, so an order can transition out
   // of 'pending' between the query that found it stale and this update.
+  if (outcome === 'failed') {
+    return claimFailedAndRelease(orderId);
+  }
   const claim = await prisma.order.updateMany({
     where: { id: orderId, status: 'pending' },
-    data: outcome === 'paid' ? { status: 'paid', paidAt: new Date() } : { status: 'failed' },
+    data: { status: 'paid', paidAt: new Date() },
   });
   if (claim.count === 0) return false;
-
-  if (outcome === 'paid') {
-    await fulfillOrder(orderId);
-  } else {
-    await releaseReservation(orderId);
-  }
+  await fulfillOrder(orderId);
   return true;
 }
 

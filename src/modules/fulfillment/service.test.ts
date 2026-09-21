@@ -6,12 +6,19 @@ vi.mock('@arbyte-solutions/mail-service', () => ({
   sendMail: vi.fn(async () => {}),
 }));
 
+vi.mock('../../lib/ticketCode', async () => {
+  const actual = await vi.importActual<typeof import('../../lib/ticketCode')>('../../lib/ticketCode');
+  return { ...actual, signTicketCode: vi.fn(actual.signTicketCode) };
+});
+
 import { sendMail } from '@arbyte-solutions/mail-service';
+import { signTicketCode } from '../../lib/ticketCode';
 import { fulfillOrder } from './service';
 
 beforeEach(async () => {
   await truncateAll();
   vi.mocked(sendMail).mockClear();
+  vi.mocked(signTicketCode).mockClear();
 });
 
 async function setupPaidOrder(quantity = 2) {
@@ -106,6 +113,62 @@ describe('fulfillOrder', () => {
 
     const tickets = await prisma.ticket.count({ where: { orderItem: { orderId: order.id } } });
     expect(tickets).toBe(2);
+  });
+
+  it('does not leave the order stuck half-minted if minting throws mid-transaction', async () => {
+    // Two separate order items so the mint loop makes two signTicketCode calls;
+    // fail on the second one to simulate a mid-transaction error after the first
+    // ticket's code has already been computed (but not yet committed, since the
+    // createMany happens after the whole rows array is built).
+    const organizer = await prisma.organizer.create({ data: { email: 'o3@example.com', passwordHash: 'x', name: 'O' } });
+    const event = await prisma.event.create({ data: { organizerId: organizer.id, title: 'Show', description: 'd', venue: 'v', startsAt: new Date(), status: 'published' } });
+    const tier = await prisma.ticketTier.create({ data: { eventId: event.id, name: 'General', price: 800, quantityTotal: 10, quantitySold: 2 } });
+    const order = await prisma.order.create({
+      data: {
+        guestEmail: 'buyer3@example.com',
+        guestName: 'Buyer',
+        status: 'paid',
+        totalAmount: 1600,
+        paymentMethod: 'redirect',
+        prn: 'PRN-MIDFAIL',
+        paidAt: new Date(),
+        items: {
+          create: [
+            { ticketTierId: tier.id, quantity: 1, unitPrice: 800 },
+            { ticketTierId: tier.id, quantity: 1, unitPrice: 800 },
+          ],
+        },
+      },
+    });
+
+    // First call succeeds normally (real implementation), second call throws,
+    // simulating a mid-transaction failure after part of the mint loop has run.
+    const actual = vi.mocked(signTicketCode).getMockImplementation();
+    let callCount = 0;
+    vi.mocked(signTicketCode).mockImplementation((id: string, eventId: string) => {
+      callCount++;
+      if (callCount === 2) {
+        throw new Error('simulated mid-mint failure');
+      }
+      return actual ? actual(id, eventId) : `sig-${id}-${eventId}`;
+    });
+
+    await expect(fulfillOrder(order.id)).rejects.toThrow('simulated mid-mint failure');
+
+    const afterFailure = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+    expect(afterFailure.fulfilledAt).toBeNull();
+    expect(afterFailure.status).toBe('paid');
+    const ticketsAfterFailure = await prisma.ticket.count({ where: { orderItem: { orderId: order.id } } });
+    expect(ticketsAfterFailure).toBe(0);
+
+    // Restore normal behavior and confirm a subsequent call fully succeeds.
+    vi.mocked(signTicketCode).mockImplementation(actual ?? undefined);
+    await fulfillOrder(order.id);
+
+    const afterSuccess = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+    expect(afterSuccess.fulfilledAt).toBeTruthy();
+    const ticketsAfterSuccess = await prisma.ticket.count({ where: { orderItem: { orderId: order.id } } });
+    expect(ticketsAfterSuccess).toBe(2);
   });
 
   it('does not overwrite a refunded order back to fulfilled', async () => {

@@ -20,6 +20,10 @@ checkinRouter.post('/:code', requireOrganizer, async (req, res, next) => {
     });
     if (!ticket) throw new AppError(404, 'Ticket not found for your events');
 
+    if (ticket.orderItem.order.status === 'refunded' || ticket.orderItem.order.status === 'failed') {
+      throw new AppError(400, 'Ticket belongs to a refunded or failed order');
+    }
+
     // Atomic check-and-mark — never a separate read-then-write (Global Constraints).
     const { count } = await prisma.ticket.updateMany({
       where: { id: ticket.id, status: 'valid' },

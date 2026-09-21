@@ -51,6 +51,17 @@ describe('POST /checkin/:code', () => {
     expect(res.status).toBe(404);
   });
 
+  it('rejects check-in for a ticket whose order was refunded after minting', async () => {
+    const { cookie, code } = await setupValidTicket();
+    const decoded = await import('../../lib/ticketCode').then((m) => m.verifyTicketCode(code));
+    const ticket = await prisma.ticket.findUniqueOrThrow({ where: { id: decoded!.ticketId } });
+    const orderItem = await prisma.orderItem.findUniqueOrThrow({ where: { id: ticket.orderItemId } });
+    await prisma.order.update({ where: { id: orderItem.orderId }, data: { status: 'refunded' } });
+
+    const res = await testApp().post(`/checkin/${encodeURIComponent(code)}`).set('Cookie', cookie);
+    expect(res.status).toBe(400);
+  });
+
   it('falls back to the buyer account name when the order has no guestName (logged-in buyer checkout)', async () => {
     const orgRes = await testApp().post('/organizer/auth/register').send({ email: 'org2@example.com', password: 'password123', name: 'Org' });
     const cookie = orgRes.headers['set-cookie'];

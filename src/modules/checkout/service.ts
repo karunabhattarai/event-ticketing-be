@@ -88,3 +88,26 @@ export async function releaseReservation(orderId: string): Promise<void> {
     )
   );
 }
+
+// Combines the pending->failed claim with the stock release in one transaction, so a
+// crash between "mark failed" and "release stock" is impossible — either both happen
+// or neither does. Returns whether this call won the claim (false = already settled
+// by a concurrent caller, a safe no-op).
+export async function claimFailedAndRelease(orderId: string): Promise<boolean> {
+  return prisma.$transaction(async (tx) => {
+    const claim = await tx.order.updateMany({
+      where: { id: orderId, status: 'pending' },
+      data: { status: 'failed' },
+    });
+    if (claim.count === 0) return false;
+
+    const order = await tx.order.findUniqueOrThrow({ where: { id: orderId }, include: { items: true } });
+    for (const item of order.items) {
+      await tx.ticketTier.update({
+        where: { id: item.ticketTierId },
+        data: { quantitySold: { decrement: item.quantity } },
+      });
+    }
+    return true;
+  });
+}

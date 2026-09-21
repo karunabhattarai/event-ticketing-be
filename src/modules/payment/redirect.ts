@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { initiatePayment, verifyResponse, FonepayCallbackResponse } from '@arbyte-solutions/fonepay-service';
 import { prisma } from '../../db/client';
 import { AppError } from '../../middleware/errorHandler';
-import { releaseReservation } from '../checkout/service';
+import { claimFailedAndRelease } from '../checkout/service';
 import { fulfillOrder } from '../fulfillment/service';
 import { env } from '../../env';
 
@@ -49,18 +49,14 @@ redirectPaymentRouter.get('/return', async (req, res, next) => {
       // same statement that acquires the row lock, so two concurrent callbacks for
       // the same order (a double-loaded return URL, or this racing a QR poll) can't
       // both see 'pending' and both settle the order — only the first claims it.
-      const claim = await prisma.order.updateMany({
-        where: { id: order.id, status: 'pending' },
-        data: ok
-          ? { status: 'paid', paidAt: new Date(), fonepayUid: query.UID, fonepayBankCode: query.BC }
-          : { status: 'failed' },
-      });
-      if (claim.count === 1) {
-        if (ok) {
-          await fulfillOrder(order.id);
-        } else {
-          await releaseReservation(order.id);
-        }
+      if (ok) {
+        const claim = await prisma.order.updateMany({
+          where: { id: order.id, status: 'pending' },
+          data: { status: 'paid', paidAt: new Date(), fonepayUid: query.UID, fonepayBankCode: query.BC },
+        });
+        if (claim.count === 1) await fulfillOrder(order.id);
+      } else {
+        await claimFailedAndRelease(order.id);
       }
     }
 

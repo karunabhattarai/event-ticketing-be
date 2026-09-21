@@ -7,7 +7,7 @@ import {
 } from '@arbyte-solutions/fonepay-service';
 import { prisma } from '../../db/client';
 import { AppError } from '../../middleware/errorHandler';
-import { releaseReservation } from '../checkout/service';
+import { claimFailedAndRelease } from '../checkout/service';
 import { fulfillOrder } from '../fulfillment/service';
 import { env } from '../../env';
 
@@ -29,17 +29,15 @@ async function settleOrder(orderId: string, outcome: 'paid' | 'failed') {
   // re-checks status='pending' as part of the row-locking statement itself, so
   // only one of the two ever gets count === 1 — the loser is a safe no-op instead
   // of a second releaseReservation/fulfillOrder call.
+  if (outcome === 'failed') {
+    await claimFailedAndRelease(orderId);
+    return;
+  }
   const claim = await prisma.order.updateMany({
     where: { id: orderId, status: 'pending' },
-    data: outcome === 'paid' ? { status: 'paid', paidAt: new Date() } : { status: 'failed' },
+    data: { status: 'paid', paidAt: new Date() },
   });
-  if (claim.count === 0) return;
-
-  if (outcome === 'paid') {
-    await fulfillOrder(orderId);
-  } else {
-    await releaseReservation(orderId);
-  }
+  if (claim.count === 1) await fulfillOrder(orderId);
 }
 
 dynamicQrPaymentRouter.post('/:orderId/generate', async (req, res, next) => {
