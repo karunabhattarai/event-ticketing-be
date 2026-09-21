@@ -6,8 +6,8 @@
   "main": "dist/server.js",
   "scripts": {
     "build": "tsc",
-    "dev": "tsx watch src/server.ts",
-    "start": "node dist/server.js",
+    "dev": "dotenv -e .env -- tsx watch src/server.ts",
+    "start": "dotenv -e .env -- node dist/server.js",
     "test": "dotenv -e .env.test -- vitest run",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
