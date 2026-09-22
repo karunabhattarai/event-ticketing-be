@@ -50,14 +50,29 @@ tiersRouter.patch('/:tierId', requireOrganizer, async (req, res, next) => {
       throw new AppError(400, `quantityTotal cannot be less than quantitySold (${existingTier.quantitySold})`);
     }
 
-    const tier = await prisma.ticketTier.update({
-      where: { id: req.params.tierId },
-      data: {
-        ...body,
-        salesStartAt: body.salesStartAt === undefined ? undefined : body.salesStartAt ? new Date(body.salesStartAt) : null,
-        salesEndAt: body.salesEndAt === undefined ? undefined : body.salesEndAt ? new Date(body.salesEndAt) : null,
-      },
-    });
+    const data = {
+      ...body,
+      salesStartAt: body.salesStartAt === undefined ? undefined : body.salesStartAt ? new Date(body.salesStartAt) : null,
+      salesEndAt: body.salesEndAt === undefined ? undefined : body.salesEndAt ? new Date(body.salesEndAt) : null,
+    };
+
+    if (body.quantityTotal !== undefined) {
+      // Conditional atomic update, not read-then-write: re-checks quantitySold as part
+      // of the same statement that performs the write, so a checkout that increments
+      // quantitySold between the pre-check above and this write can't land the tier in
+      // an oversold-looking state (quantityTotal < quantitySold).
+      const result = await prisma.ticketTier.updateMany({
+        where: { id: req.params.tierId, quantitySold: { lte: body.quantityTotal } },
+        data,
+      });
+      if (result.count === 0) {
+        throw new AppError(409, 'quantityTotal conflicts with a concurrent change to quantitySold — please retry');
+      }
+    } else {
+      await prisma.ticketTier.update({ where: { id: req.params.tierId }, data });
+    }
+
+    const tier = await prisma.ticketTier.findUniqueOrThrow({ where: { id: req.params.tierId } });
     res.status(200).json(tier);
   } catch (err) {
     if (err instanceof z.ZodError) return next(new AppError(400, 'Invalid request body'));

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { testApp } from '../../../tests/helpers/testApp';
 import { truncateAll } from '../../../tests/helpers/testDb';
 import { prisma } from '../../db/client';
@@ -56,6 +56,29 @@ describe('PATCH /events/:eventId/tiers/:tierId', () => {
 
     const unchanged = await prisma.ticketTier.findUniqueOrThrow({ where: { id: create.body.id } });
     expect(unchanged.quantityTotal).toBe(100);
+  });
+
+  it('rejects the update atomically if quantitySold rises past the new quantityTotal between the read and the write', async () => {
+    const { cookie, eventId } = await setupEvent();
+    const create = await testApp().post(`/events/${eventId}/tiers`).set('Cookie', cookie).send({ name: 'General', price: 800, quantityTotal: 100 });
+    await prisma.ticketTier.update({ where: { id: create.body.id }, data: { quantitySold: 5 } });
+
+    // Simulate a concurrent checkout landing between the ownership-check read and the
+    // atomic write statement: quantitySold rises to 12 right after the handler's
+    // pre-check (5 < 10) but before its guarded update runs.
+    const originalUpdateMany = prisma.ticketTier.updateMany.bind(prisma.ticketTier);
+    const spy = vi.spyOn(prisma.ticketTier, 'updateMany').mockImplementationOnce(async (args) => {
+      await prisma.ticketTier.update({ where: { id: create.body.id }, data: { quantitySold: 12 } });
+      return originalUpdateMany(args as never);
+    });
+
+    const res = await testApp().patch(`/events/${eventId}/tiers/${create.body.id}`).set('Cookie', cookie).send({ quantityTotal: 10 });
+
+    spy.mockRestore();
+    expect(res.status).toBe(409);
+    const unchanged = await prisma.ticketTier.findUniqueOrThrow({ where: { id: create.body.id } });
+    expect(unchanged.quantityTotal).toBe(100);
+    expect(unchanged.quantitySold).toBe(12);
   });
 
   it('clears salesEndAt back to null when explicitly sent as null', async () => {
