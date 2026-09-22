@@ -62,6 +62,11 @@ redirectPaymentRouter.get('/return', async (req, res, next) => {
       }
     }
 
+    // The order access token travels in this URL (guest checkout has no session to
+    // carry it instead) — history/log exposure is an accepted tradeoff of that design,
+    // but at minimum stop it leaking via Referer to any third-party resource the
+    // status page loads.
+    res.set('Referrer-Policy', 'no-referrer');
     res.redirect(302, `${env.appBaseUrl}/order/${order.id}/status?token=${order.accessToken}`);
   } catch (err) {
     next(err);

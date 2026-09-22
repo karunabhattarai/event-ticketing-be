@@ -61,6 +61,15 @@ describe('GET /payment/redirect/return', () => {
     expect(updated?.status).toBe('fulfilled');
   });
 
+  it('sets Referrer-Policy: no-referrer so the order access token in the redirect URL is not leaked via Referer', async () => {
+    const order = await setupPendingOrder();
+    vi.mocked(verifyResponse).mockReturnValue(true);
+
+    const res = await testApp().get('/payment/redirect/return').query({ PRN: order.prn, RC: 'successful', DV: 'x', PID: 'x', PS: 'x', UID: 'x', BC: 'x', INI: 'x', P_AMT: '800', R_AMT: '800' });
+
+    expect(res.headers['referrer-policy']).toBe('no-referrer');
+  });
+
   it('marks the order failed and releases stock on an invalid callback', async () => {
     const order = await setupPendingOrder();
     vi.mocked(verifyResponse).mockReturnValue(false);
