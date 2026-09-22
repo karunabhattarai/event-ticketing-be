@@ -12,8 +12,15 @@ import { fulfillOrder } from '../fulfillment/service';
 import { env } from '../../env';
 import { safeCompare } from '../../lib/safeCompare';
 import { retryOnce } from '../../lib/retryOnce';
+import { qrGenerateRateLimiter } from '../../middleware/rateLimiters';
 
 export const dynamicQrPaymentRouter = Router();
+
+// Tracks the currently-open websocket subscription per order, so a second
+// /generate call for the same order closes the first subscription/timer instead
+// of leaking it — without this, repeated calls accumulate open sockets until each
+// independently times out.
+const activeSubscriptions = new Map<string, () => void>();
 
 const qrConfig = {
   merchantCode: env.fonepay.merchantCode,
@@ -42,12 +49,16 @@ async function settleOrder(orderId: string, outcome: 'paid' | 'failed') {
   if (claim.count === 1) await fulfillOrder(orderId);
 }
 
-dynamicQrPaymentRouter.post('/:orderId/generate', async (req, res, next) => {
+dynamicQrPaymentRouter.post('/:orderId/generate', qrGenerateRateLimiter, async (req, res, next) => {
   try {
     if (typeof req.query.token !== 'string') throw new AppError(403, 'Forbidden');
     const order = await prisma.order.findUnique({ where: { id: req.params.orderId } });
     if (!order || !safeCompare(order.accessToken, req.query.token)) throw new AppError(403, 'Forbidden');
     if (order.status !== 'pending') throw new AppError(400, 'Order is not pending payment');
+
+    // A prior /generate call for this order left a subscription open — close it
+    // before opening a new one instead of leaking it.
+    activeSubscriptions.get(order.id)?.();
 
     const qr = await generateDynamicQr(qrConfig, {
       amount: Number(order.totalAmount),
@@ -57,7 +68,8 @@ dynamicQrPaymentRouter.post('/:orderId/generate', async (req, res, next) => {
 
     // Websocket primary path — best-effort, fallback polling covers a dropped socket.
     let closeTimer: NodeJS.Timeout;
-    const { close } = subscribeDynamicQrStatus(qr.thirdpartyQrWebSocketUrl, {
+    let close: () => void = () => {};
+    const { close: closeSubscription } = subscribeDynamicQrStatus(qr.thirdpartyQrWebSocketUrl, {
       onPaymentSuccess: () => {
         // Explicit .catch — this runs outside any request's try/catch, so an
         // unhandled rejection here (e.g. a DB blip during fulfillOrder) would
@@ -66,19 +78,22 @@ dynamicQrPaymentRouter.post('/:orderId/generate', async (req, res, next) => {
         // this particular attempt fails.
         settleOrder(order.id, 'paid')
           .catch((err) => console.error(`websocket settleOrder failed for order ${order.id}`, err))
-          .finally(() => {
-            clearTimeout(closeTimer);
-            close();
-          });
+          .finally(() => close());
       },
       onError: () => {
         // swallow the payment-status implication — GET /status's polling fallback
         // will resolve this order — but still release the socket, which onError
         // otherwise leaks indefinitely.
-        clearTimeout(closeTimer);
         close();
       },
     });
+
+    close = () => {
+      clearTimeout(closeTimer);
+      if (activeSubscriptions.get(order.id) === close) activeSubscriptions.delete(order.id);
+      closeSubscription();
+    };
+    activeSubscriptions.set(order.id, close);
 
     // No success/error event may ever fire (buyer abandons the checkout) — close
     // the socket once the QR's own advertised validity window elapses, so an

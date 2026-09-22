@@ -35,4 +35,25 @@ describe('rate limiter configuration', () => {
     const limited = await request(app).get('/probe');
     expect(limited.status).toBe(429);
   });
+
+  it('qrGenerateRateLimiter config returns 429 after exceeding its configured limit', async () => {
+    const app = express();
+    app.use(
+      rateLimit({
+        windowMs: 15 * 60 * 1000,
+        limit: 10,
+        standardHeaders: true,
+        legacyHeaders: false,
+      })
+    );
+    app.get('/probe', (_req, res) => res.status(200).json({ ok: true }));
+
+    for (let i = 0; i < 10; i++) {
+      const res = await request(app).get('/probe');
+      expect(res.status).toBe(200);
+    }
+
+    const limited = await request(app).get('/probe');
+    expect(limited.status).toBe(429);
+  });
 });

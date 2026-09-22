@@ -52,3 +52,13 @@ export const resendRateLimiter = buildLimiter({
   standardHeaders: true,
   legacyHeaders: false,
 });
+
+// QR generate: each call opens a Fonepay websocket subscription and a
+// close-on-expiry timer — anyone holding one access token could otherwise call this
+// repeatedly to make the backend accumulate many concurrently-open websockets.
+export const qrGenerateRateLimiter = buildLimiter({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+});

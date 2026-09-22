@@ -69,6 +69,18 @@ describe('POST /payment/dynamic-qr/:orderId/generate', () => {
     lastSubscribeCallbacks?.onError();
     expect(closeMock).toHaveBeenCalledTimes(1);
   });
+
+  it('closes a prior subscription for the same order when generate is called again', async () => {
+    const order = await setupPendingQrOrder();
+    const first = await testApp().post(`/payment/dynamic-qr/${order.id}/generate`).query({ token: order.accessToken });
+    expect(first.status).toBe(200);
+    expect(closeMock).not.toHaveBeenCalled();
+
+    const second = await testApp().post(`/payment/dynamic-qr/${order.id}/generate`).query({ token: order.accessToken });
+    expect(second.status).toBe(200);
+    // The first subscription's close() ran as part of handling the second /generate call.
+    expect(closeMock).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('GET /payment/dynamic-qr/:orderId/status', () => {
