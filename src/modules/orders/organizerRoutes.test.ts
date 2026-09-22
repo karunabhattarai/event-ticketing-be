@@ -130,6 +130,20 @@ describe('POST /events/:eventId/orders/:orderId/refund', () => {
     expect(updatedTicket.status).toBe('void');
   });
 
+  it('releases the tier inventory the order held', async () => {
+    const { cookie, eventId, orderId } = await setupFulfilledOrder();
+    await prisma.order.update({ where: { id: orderId }, data: { status: 'fulfilled', paidAt: new Date(), fulfilledAt: new Date() } });
+    const item = await prisma.orderItem.findFirstOrThrow({ where: { orderId } });
+    const beforeTier = await prisma.ticketTier.findUniqueOrThrow({ where: { id: item.ticketTierId } });
+    expect(beforeTier.quantitySold).toBe(1);
+
+    const res = await testApp().post(`/events/${eventId}/orders/${orderId}/refund`).set('Cookie', cookie);
+    expect(res.status).toBe(200);
+
+    const afterTier = await prisma.ticketTier.findUniqueOrThrow({ where: { id: item.ticketTierId } });
+    expect(afterTier.quantitySold).toBe(0);
+  });
+
   it('does not un-use an already-used ticket on refund', async () => {
     const { cookie, eventId, orderId } = await setupFulfilledOrder();
     await prisma.order.update({ where: { id: orderId }, data: { status: 'fulfilled', paidAt: new Date(), fulfilledAt: new Date() } });

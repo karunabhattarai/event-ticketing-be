@@ -87,6 +87,7 @@ organizerOrdersRouter.post('/:orderId/refund', requireOrganizer, async (req, res
     // ownership of an arbitrary orderId.
     const order = await prisma.order.findFirst({
       where: { id: req.params.orderId, items: { some: { ticketTier: { eventId: req.params.eventId } } } },
+      include: { items: true },
     });
     if (!order) throw new AppError(404, 'Order not found');
     // Only a paid/fulfilled order actually reserved stock and issued
@@ -104,6 +105,15 @@ organizerOrdersRouter.post('/:orderId/refund', requireOrganizer, async (req, res
         where: { orderItem: { orderId: order.id }, status: 'valid' },
         data: { status: 'void' },
       }),
+      // Reverse the stock reservation this order held — otherwise a refunded
+      // order's seats are gone from sellable inventory forever, since the
+      // expiry sweep only ever releases stock for status='pending' orders.
+      ...order.items.map((item) =>
+        prisma.ticketTier.update({
+          where: { id: item.ticketTierId },
+          data: { quantitySold: { decrement: item.quantity } },
+        })
+      ),
     ]);
 
     res.status(200).json({ ok: true });
