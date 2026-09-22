@@ -51,8 +51,17 @@ describe('expireStalePendingOrders', () => {
     expect(updated.status).toBe('pending');
   });
 
-  it('expires a stale redirect order with no bankCode/uid to reconcile against, and releases stock', async () => {
-    const { order, tier } = await setupStaleOrder({ paymentMethod: 'redirect', fonepayBankCode: null, fonepayUid: null });
+  it('gives a redirect order with no bankCode/uid one extra grace window before failing it (callback may just be delayed)', async () => {
+    const { order } = await setupStaleOrder({ paymentMethod: 'redirect', fonepayBankCode: null, fonepayUid: null, ageMinutes: 20 });
+    const result = await expireStalePendingOrders();
+    expect(result.expired).toBe(0);
+    const updated = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+    expect(updated.status).toBe('pending');
+    expect(checkStatus).not.toHaveBeenCalled();
+  });
+
+  it('expires a redirect order with no bankCode/uid once past the grace window, and releases stock', async () => {
+    const { order, tier } = await setupStaleOrder({ paymentMethod: 'redirect', fonepayBankCode: null, fonepayUid: null, ageMinutes: 40 });
     const result = await expireStalePendingOrders();
     expect(result.expired).toBe(1);
     const updated = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
@@ -98,7 +107,7 @@ describe('expireStalePendingOrders', () => {
 
   it('continues processing other orders when one order throws during reconciliation', async () => {
     const { order: throwingOrder } = await setupStaleOrder({ paymentMethod: 'dynamic_qr' });
-    const { order: healthyOrder, tier: healthyTier } = await setupStaleOrder({ paymentMethod: 'redirect', fonepayBankCode: null, fonepayUid: null });
+    const { order: healthyOrder, tier: healthyTier } = await setupStaleOrder({ paymentMethod: 'redirect', fonepayBankCode: null, fonepayUid: null, ageMinutes: 40 });
 
     vi.mocked(checkDynamicQrStatus).mockImplementation(async (_config, { prn }) => {
       if (prn === throwingOrder.prn) throw new Error('Fonepay network error');

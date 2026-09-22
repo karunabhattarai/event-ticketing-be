@@ -38,6 +38,11 @@ async function claimAndSettle(orderId: string, outcome: 'paid' | 'failed'): Prom
 
 export async function expireStalePendingOrders(): Promise<{ checked: number; expired: number; failed: number }> {
   const cutoff = new Date(Date.now() - env.orderExpiryMinutes * 60 * 1000);
+  // Redirect orders with no callback data yet get one extra full expiry window before
+  // being auto-failed — checkStatus requires bankCode/uid from the callback, so we can't
+  // reconcile them against Fonepay directly, and a delayed-but-legitimate callback
+  // shouldn't fail an order the customer actually paid for.
+  const hardCutoff = new Date(Date.now() - 2 * env.orderExpiryMinutes * 60 * 1000);
   const staleOrders = await prisma.order.findMany({
     where: { status: 'pending', createdAt: { lt: cutoff } },
   });
@@ -75,6 +80,8 @@ export async function expireStalePendingOrders(): Promise<{ checked: number; exp
           continue;
         }
       }
+
+      if (order.createdAt >= hardCutoff) continue;
 
       const settled = await claimAndSettle(order.id, 'failed');
       if (settled) expired++;
