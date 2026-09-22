@@ -99,19 +99,6 @@ export async function createOrder(params: {
   return order;
 }
 
-export async function releaseReservation(orderId: string): Promise<void> {
-  const order = await prisma.order.findUniqueOrThrow({ where: { id: orderId }, include: { items: true } });
-
-  await prisma.$transaction(
-    order.items.map((item) =>
-      prisma.ticketTier.update({
-        where: { id: item.ticketTierId },
-        data: { quantitySold: { decrement: item.quantity } },
-      })
-    )
-  );
-}
-
 // Combines the pending->failed claim with the stock release in one transaction, so a
 // crash between "mark failed" and "release stock" is impossible — either both happen
 // or neither does. Returns whether this call won the claim (false = already settled

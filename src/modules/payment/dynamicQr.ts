@@ -30,7 +30,7 @@ async function settleOrder(orderId: string, outcome: 'paid' | 'failed') {
   // try to settle this order at nearly the same moment. updateMany's WHERE
   // re-checks status='pending' as part of the row-locking statement itself, so
   // only one of the two ever gets count === 1 — the loser is a safe no-op instead
-  // of a second releaseReservation/fulfillOrder call.
+  // of a second claimFailedAndRelease/fulfillOrder call.
   if (outcome === 'failed') {
     await claimFailedAndRelease(orderId);
     return;
