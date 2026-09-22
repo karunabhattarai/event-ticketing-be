@@ -59,6 +59,36 @@ describe('fulfillOrder', () => {
     expect(updated.fulfilledAt).toBeTruthy();
   });
 
+  it('escapes HTML in tier name and event title before putting them in the ticket email', async () => {
+    const organizer = await prisma.organizer.create({ data: { email: 'o2@example.com', passwordHash: 'x', name: 'O' } });
+    const event = await prisma.event.create({
+      data: { organizerId: organizer.id, title: '<img src=x onerror=alert(1)>', description: 'd', venue: 'v', startsAt: new Date(), status: 'published' },
+    });
+    const tier = await prisma.ticketTier.create({
+      data: { eventId: event.id, name: '<script>evil</script>', price: 800, quantityTotal: 10, quantitySold: 1 },
+    });
+    const order = await prisma.order.create({
+      data: {
+        guestEmail: 'buyer2@example.com',
+        guestName: 'Buyer',
+        status: 'paid',
+        totalAmount: 800,
+        paymentMethod: 'redirect',
+        prn: 'PRN-ESCAPE',
+        paidAt: new Date(),
+        items: { create: [{ ticketTierId: tier.id, quantity: 1, unitPrice: 800 }] },
+      },
+    });
+
+    await fulfillOrder(order.id);
+
+    const call = vi.mocked(sendMail).mock.calls[0][1];
+    expect(call.html).not.toContain('<script>evil</script>');
+    expect(call.html).not.toContain('<img src=x onerror=alert(1)>');
+    expect(call.html).toContain('&lt;script&gt;evil&lt;/script&gt;');
+    expect(call.html).toContain('&lt;img src=x onerror=alert(1)&gt;');
+  });
+
   it('leaves the order paid (not fulfilled) if email sending fails, without throwing', async () => {
     const order = await setupPaidOrder(1);
     vi.mocked(sendMail).mockRejectedValueOnce(new Error('SMTP down'));

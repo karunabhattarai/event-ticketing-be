@@ -5,6 +5,18 @@ import { prisma } from '../../db/client';
 import { signTicketCode } from '../../lib/ticketCode';
 import { env } from '../../env';
 
+// Organizer-controlled strings (tier name, event title) end up interpolated into the
+// ticket confirmation HTML email below — escape them so an organizer can't inject
+// markup/links into every buyer's inbox via a tier or event name.
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 export async function fulfillOrder(orderId: string): Promise<{ emailSent: boolean }> {
   // Claim + mint run in one transaction: if minting throws for any reason
   // (e.g. a transient DB error), the whole transaction rolls back, including
@@ -56,12 +68,13 @@ export async function fulfillOrder(orderId: string): Promise<{ emailSent: boolea
       const cid = `ticket-${cidIndex++}`;
       const png = await QRCode.toBuffer(ticket.code);
       attachments.push({ filename: `${cid}.png`, content: png, contentType: 'image/png', cid });
-      ticketLines.push(`<p>${item.ticketTier.name} — <img src="cid:${cid}" width="120" height="120" /></p>`);
+      ticketLines.push(`<p>${escapeHtml(item.ticketTier.name)} — <img src="cid:${cid}" width="120" height="120" /></p>`);
     }
   }
 
+  const eventTitle = refreshedOrder.items[0]?.ticketTier.event.title;
   const html = `
-    <h2>${refreshedOrder.items[0]?.ticketTier.event.title ?? 'Your tickets'}</h2>
+    <h2>${eventTitle ? escapeHtml(eventTitle) : 'Your tickets'}</h2>
     <p>Here are your tickets:</p>
     ${ticketLines.join('\n')}
   `;
