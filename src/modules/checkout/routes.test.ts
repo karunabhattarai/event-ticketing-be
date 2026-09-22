@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { testApp } from '../../../tests/helpers/testApp';
 import { truncateAll } from '../../../tests/helpers/testDb';
 import { prisma } from '../../db/client';
@@ -102,5 +102,29 @@ describe('POST /checkout', () => {
       .post('/checkout')
       .send({ items: [{ tierId, quantity: 1 }], guestEmail: 'buyer@example.com', guestName: 'Buyer', paymentMethod: 'redirect' });
     expect(res.status).toBe(201);
+  });
+
+  it('uses the tier price/quantityTotal as of the reservation transaction, not a stale pre-transaction snapshot', async () => {
+    const { tierId } = await setupPublishedEventWithTier(1);
+    // Simulate an organizer editing the tier (raising the price and stock) after checkout
+    // has already read it but before the reservation transaction runs, by patching the
+    // one call the handler makes to fetch tiers up front.
+    const originalFindMany = prisma.ticketTier.findMany.bind(prisma.ticketTier);
+    const spy = vi.spyOn(prisma.ticketTier, 'findMany').mockImplementationOnce(async (args) => {
+      const result = await originalFindMany(args as never);
+      await prisma.ticketTier.update({ where: { id: tierId }, data: { price: 1500, quantityTotal: 5 } });
+      return result;
+    });
+
+    const res = await testApp()
+      .post('/checkout')
+      .send({ items: [{ tierId, quantity: 3 }], guestEmail: 'buyer@example.com', guestName: 'Buyer', paymentMethod: 'redirect' });
+
+    spy.mockRestore();
+
+    // Fresh quantityTotal (5) allows 3 more than the stale snapshot (1) would have,
+    // and totalAmount reflects the fresh price (1500), not the stale one (800).
+    expect(res.status).toBe(201);
+    expect(Number(res.body.totalAmount)).toBe(4500);
   });
 });

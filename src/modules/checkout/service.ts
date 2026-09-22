@@ -37,17 +37,22 @@ export async function createOrder(params: {
     }
   }
 
-  let totalAmount = new Prisma.Decimal(0);
-  for (const item of params.items) {
-    const tier = tiers.find((t) => t.id === item.tierId)!;
-    totalAmount = totalAmount.add(tier.price.mul(item.quantity));
-  }
-
   const prn = `ORDER-${crypto.randomUUID()}`;
 
   const order = await prisma.$transaction(async (tx) => {
+    // Re-read each tier's price/quantityTotal inside the transaction, right before
+    // reserving stock, instead of trusting the `tiers` snapshot fetched above — an
+    // organizer's concurrent PATCH /tiers/:tierId (price or quantityTotal change)
+    // between that snapshot and this transaction would otherwise leave the stock
+    // check and the order total built from stale values.
+    const freshTiers = new Map<string, { name: string; price: Prisma.Decimal; quantityTotal: number }>();
     for (const item of params.items) {
-      const tier = tiers.find((t) => t.id === item.tierId)!;
+      const staleTier = tiers.find((t) => t.id === item.tierId)!;
+      const freshTier = freshTiers.has(item.tierId)
+        ? freshTiers.get(item.tierId)!
+        : await tx.ticketTier.findUniqueOrThrow({ where: { id: item.tierId } });
+      freshTiers.set(item.tierId, freshTier);
+
       // Conditional atomic update, not read-then-write: the WHERE clause re-checks
       // remaining stock as part of the same statement Postgres uses to acquire the
       // row lock, so two concurrent transactions can't both pass a stale read and
@@ -56,13 +61,19 @@ export async function createOrder(params: {
       const result = await tx.ticketTier.updateMany({
         where: {
           id: item.tierId,
-          quantitySold: { lte: tier.quantityTotal - item.quantity },
+          quantitySold: { lte: freshTier.quantityTotal - item.quantity },
         },
         data: { quantitySold: { increment: item.quantity } },
       });
       if (result.count === 0) {
-        throw new AppError(409, `Not enough tickets remaining for ${tier.name}`);
+        throw new AppError(409, `Not enough tickets remaining for ${staleTier.name}`);
       }
+    }
+
+    let totalAmount = new Prisma.Decimal(0);
+    for (const item of params.items) {
+      const freshTier = freshTiers.get(item.tierId)!;
+      totalAmount = totalAmount.add(freshTier.price.mul(item.quantity));
     }
 
     return tx.order.create({
@@ -76,8 +87,8 @@ export async function createOrder(params: {
         prn,
         items: {
           create: params.items.map((item) => {
-            const tier = tiers.find((t) => t.id === item.tierId)!;
-            return { ticketTierId: item.tierId, quantity: item.quantity, unitPrice: tier.price };
+            const freshTier = freshTiers.get(item.tierId)!;
+            return { ticketTierId: item.tierId, quantity: item.quantity, unitPrice: freshTier.price };
           }),
         },
       },
