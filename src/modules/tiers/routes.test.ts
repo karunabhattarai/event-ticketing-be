@@ -67,10 +67,11 @@ describe('PATCH /events/:eventId/tiers/:tierId', () => {
     // atomic write statement: quantitySold rises to 12 right after the handler's
     // pre-check (5 < 10) but before its guarded update runs.
     const originalUpdateMany = prisma.ticketTier.updateMany.bind(prisma.ticketTier);
-    const spy = vi.spyOn(prisma.ticketTier, 'updateMany').mockImplementationOnce(async (args) => {
-      await prisma.ticketTier.update({ where: { id: create.body.id }, data: { quantitySold: 12 } });
-      return originalUpdateMany(args as never);
-    });
+    const spy = vi.spyOn(prisma.ticketTier, 'updateMany').mockImplementationOnce(((args: never) => {
+      return prisma.ticketTier
+        .update({ where: { id: create.body.id }, data: { quantitySold: 12 } })
+        .then(() => originalUpdateMany(args));
+    }) as typeof prisma.ticketTier.updateMany);
 
     const res = await testApp().patch(`/events/${eventId}/tiers/${create.body.id}`).set('Cookie', cookie).send({ quantityTotal: 10 });
 

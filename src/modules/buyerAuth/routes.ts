@@ -5,6 +5,7 @@ import { hashPassword, verifyPassword, signJwt, authCookieOptions } from '../../
 import { AppError } from '../../middleware/errorHandler';
 import { env } from '../../env';
 import { authRateLimiter } from '../../middleware/rateLimiters';
+import { isUniqueConstraintError } from '../../lib/prismaErrors';
 
 const registerSchema = z.object({
   email: z.string().email(),
@@ -27,9 +28,20 @@ buyerAuthRouter.post('/register', authRateLimiter, async (req, res, next) => {
     if (existing) throw new AppError(409, 'Email already registered');
 
     const passwordHash = await hashPassword(body.password);
-    const buyer = await prisma.buyer.create({
-      data: { email: body.email, passwordHash, name: body.name },
-    });
+    let buyer;
+    try {
+      buyer = await prisma.buyer.create({
+        data: { email: body.email, passwordHash, name: body.name },
+      });
+    } catch (createErr) {
+      // Two concurrent registrations for the same email can both pass the findUnique
+      // check above before either creates a row — the DB's unique constraint is the
+      // real guard, and P2002 here means the race was lost, not a server error.
+      if (isUniqueConstraintError(createErr)) {
+        throw new AppError(409, 'Email already registered');
+      }
+      throw createErr;
+    }
 
     const token = signJwt({ id: buyer.id }, env.buyerJwtSecret);
     res.cookie('buyer_token', token, authCookieOptions());

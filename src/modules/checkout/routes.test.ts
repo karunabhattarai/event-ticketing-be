@@ -110,11 +110,12 @@ describe('POST /checkout', () => {
     // has already read it but before the reservation transaction runs, by patching the
     // one call the handler makes to fetch tiers up front.
     const originalFindMany = prisma.ticketTier.findMany.bind(prisma.ticketTier);
-    const spy = vi.spyOn(prisma.ticketTier, 'findMany').mockImplementationOnce(async (args) => {
-      const result = await originalFindMany(args as never);
-      await prisma.ticketTier.update({ where: { id: tierId }, data: { price: 1500, quantityTotal: 5 } });
-      return result;
-    });
+    const spy = vi.spyOn(prisma.ticketTier, 'findMany').mockImplementationOnce(((args: never) => {
+      return originalFindMany(args).then(async (result) => {
+        await prisma.ticketTier.update({ where: { id: tierId }, data: { price: 1500, quantityTotal: 5 } });
+        return result;
+      });
+    }) as typeof prisma.ticketTier.findMany);
 
     const res = await testApp()
       .post('/checkout')
