@@ -10,7 +10,7 @@ beforeEach(async () => {
 async function setupEvent() {
   const orgRes = await testApp().post('/organizer/auth/register').send({ email: 'org@example.com', password: 'password123', name: 'Org' });
   const cookie = orgRes.headers['set-cookie'];
-  const eventRes = await testApp().post('/events').set('Cookie', cookie).send({ title: 'X', description: 'd', venue: 'v', startsAt: '2026-12-01T18:00:00Z' });
+  const eventRes = await testApp().post('/events').set('Cookie', cookie).send({ title: 'X', description: 'd', venue: 'v', startsAt: '2099-12-01T18:00:00Z' });
   return { cookie, eventId: eventRes.body.id };
 }
 
@@ -24,6 +24,15 @@ describe('POST /events/:eventId/tiers', () => {
     expect(res.status).toBe(201);
     expect(res.body.name).toBe('General');
     expect(res.body.quantitySold).toBe(0);
+  });
+
+  it('rejects a salesStartAt on or after salesEndAt', async () => {
+    const { cookie, eventId } = await setupEvent();
+    const res = await testApp()
+      .post(`/events/${eventId}/tiers`)
+      .set('Cookie', cookie)
+      .send({ name: 'General', price: 800, quantityTotal: 100, salesStartAt: '2026-06-01T00:00:00Z', salesEndAt: '2026-05-01T00:00:00Z' });
+    expect(res.status).toBe(400);
   });
 
   it("rejects creating a tier on another organizer's event", async () => {
@@ -82,12 +91,29 @@ describe('PATCH /events/:eventId/tiers/:tierId', () => {
     expect(unchanged.quantitySold).toBe(12);
   });
 
+  it('rejects patching salesEndAt before the tier\'s existing salesStartAt', async () => {
+    const { cookie, eventId } = await setupEvent();
+    const create = await testApp()
+      .post(`/events/${eventId}/tiers`)
+      .set('Cookie', cookie)
+      .send({ name: 'General', price: 800, quantityTotal: 100, salesStartAt: '2026-06-01T00:00:00Z' });
+
+    const res = await testApp()
+      .patch(`/events/${eventId}/tiers/${create.body.id}`)
+      .set('Cookie', cookie)
+      .send({ salesEndAt: '2026-05-01T00:00:00Z' });
+    expect(res.status).toBe(400);
+
+    const unchanged = await prisma.ticketTier.findUniqueOrThrow({ where: { id: create.body.id } });
+    expect(unchanged.salesEndAt).toBeNull();
+  });
+
   it('clears salesEndAt back to null when explicitly sent as null', async () => {
     const { cookie, eventId } = await setupEvent();
     const create = await testApp()
       .post(`/events/${eventId}/tiers`)
       .set('Cookie', cookie)
-      .send({ name: 'General', price: 800, quantityTotal: 100, salesEndAt: '2026-12-01T00:00:00Z' });
+      .send({ name: 'General', price: 800, quantityTotal: 100, salesEndAt: '2099-12-01T00:00:00Z' });
     expect(create.body.salesEndAt).not.toBeNull();
 
     const res = await testApp()
