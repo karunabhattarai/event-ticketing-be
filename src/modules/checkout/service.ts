@@ -27,6 +27,8 @@ export async function createOrder(params: {
   if (event.status !== 'published') throw new AppError(400, 'Event is not available for purchase');
 
   const now = new Date();
+  if (event.startsAt < now) throw new AppError(400, 'Event has already taken place');
+
   for (const item of params.items) {
     const tier = tiers.find((t) => t.id === item.tierId)!;
     if (tier.salesStartAt && tier.salesStartAt > now) {

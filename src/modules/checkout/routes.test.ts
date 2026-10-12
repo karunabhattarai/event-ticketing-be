@@ -13,7 +13,7 @@ async function setupPublishedEventWithTier(quantityTotal = 10) {
   orgCounter += 1;
   const orgRes = await testApp().post('/organizer/auth/register').send({ email: `org${orgCounter}@example.com`, password: 'password123', name: 'Org' });
   const cookie = orgRes.headers['set-cookie'];
-  const eventRes = await testApp().post('/events').set('Cookie', cookie).send({ title: 'X', description: 'd', venue: 'v', startsAt: '2026-12-01T18:00:00Z' });
+  const eventRes = await testApp().post('/events').set('Cookie', cookie).send({ title: 'X', description: 'd', venue: 'v', startsAt: '2099-12-01T18:00:00Z' });
   await testApp().patch(`/events/${eventRes.body.id}`).set('Cookie', cookie).send({ status: 'published' });
   const tierRes = await testApp().post(`/events/${eventRes.body.id}/tiers`).set('Cookie', cookie).send({ name: 'General', price: 800, quantityTotal });
   return { eventId: eventRes.body.id, tierId: tierRes.body.id };
@@ -87,6 +87,18 @@ describe('POST /checkout', () => {
       .post('/checkout')
       .send({ items: [{ tierId, quantity: 1 }], guestEmail: 'buyer@example.com', guestName: 'Buyer', paymentMethod: 'redirect' });
     expect(res.status).toBe(400);
+  });
+
+  it('rejects checkout when the event has already taken place', async () => {
+    const { eventId, tierId } = await setupPublishedEventWithTier(10);
+    await prisma.event.update({ where: { id: eventId }, data: { startsAt: new Date(Date.now() - 60 * 60 * 1000) } });
+    const res = await testApp()
+      .post('/checkout')
+      .send({ items: [{ tierId, quantity: 1 }], guestEmail: 'buyer@example.com', guestName: 'Buyer', paymentMethod: 'redirect' });
+    expect(res.status).toBe(400);
+
+    const tier = await prisma.ticketTier.findUnique({ where: { id: tierId } });
+    expect(tier?.quantitySold).toBe(0);
   });
 
   it('allows checkout when the tier sales window includes now', async () => {
