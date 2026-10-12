@@ -129,11 +129,15 @@ eventsRouter.get('/', async (req, res, next) => {
     // to render "From Rs. X" (frontend plan Task 3).
     const page = Math.max(1, Number(req.query.page) || 1);
     const pageSize = Math.min(100, Math.max(1, Number(req.query.pageSize) || 20));
+    const when = req.query.when === 'past' ? 'past' : 'upcoming';
+    const now = new Date();
 
     const events = await prisma.event.findMany({
-      where: { status: 'published' },
+      where: { status: 'published', startsAt: when === 'past' ? { lt: now } : { gte: now } },
       include: { tiers: true },
-      orderBy: { startsAt: 'asc' },
+      // Most recent first for past events (what you'd want to look back on),
+      // soonest first for upcoming (what you'd want to act on).
+      orderBy: { startsAt: when === 'past' ? 'desc' : 'asc' },
       skip: (page - 1) * pageSize,
       take: pageSize,
     });

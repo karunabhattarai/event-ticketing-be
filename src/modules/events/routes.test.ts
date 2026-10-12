@@ -19,14 +19,14 @@ describe('POST /events', () => {
     const res = await testApp()
       .post('/events')
       .set('Cookie', cookie)
-      .send({ title: 'Rock Show', description: 'desc', venue: 'Venue', startsAt: '2026-12-01T18:00:00Z' });
+      .send({ title: 'Rock Show', description: 'desc', venue: 'Venue', startsAt: '2099-12-01T18:00:00Z' });
 
     expect(res.status).toBe(201);
     expect(res.body.status).toBe('draft');
   });
 
   it('rejects unauthenticated requests', async () => {
-    const res = await testApp().post('/events').send({ title: 'X', description: 'd', venue: 'v', startsAt: '2026-12-01T18:00:00Z' });
+    const res = await testApp().post('/events').send({ title: 'X', description: 'd', venue: 'v', startsAt: '2099-12-01T18:00:00Z' });
     expect(res.status).toBe(401);
   });
 });
@@ -34,7 +34,7 @@ describe('POST /events', () => {
 describe('PATCH /events/:id', () => {
   it('lets the owning organizer publish their event', async () => {
     const { cookie } = await registerOrganizer();
-    const create = await testApp().post('/events').set('Cookie', cookie).send({ title: 'X', description: 'd', venue: 'v', startsAt: '2026-12-01T18:00:00Z' });
+    const create = await testApp().post('/events').set('Cookie', cookie).send({ title: 'X', description: 'd', venue: 'v', startsAt: '2099-12-01T18:00:00Z' });
     const res = await testApp().patch(`/events/${create.body.id}`).set('Cookie', cookie).send({ status: 'published' });
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('published');
@@ -43,7 +43,7 @@ describe('PATCH /events/:id', () => {
   it("rejects editing another organizer's event", async () => {
     const owner = await registerOrganizer('owner@example.com');
     const other = await registerOrganizer('other@example.com');
-    const create = await testApp().post('/events').set('Cookie', owner.cookie).send({ title: 'X', description: 'd', venue: 'v', startsAt: '2026-12-01T18:00:00Z' });
+    const create = await testApp().post('/events').set('Cookie', owner.cookie).send({ title: 'X', description: 'd', venue: 'v', startsAt: '2099-12-01T18:00:00Z' });
     const res = await testApp().patch(`/events/${create.body.id}`).set('Cookie', other.cookie).send({ status: 'published' });
     expect(res.status).toBe(404);
   });
@@ -52,8 +52,8 @@ describe('PATCH /events/:id', () => {
 describe('GET /events (public)', () => {
   it('only lists published events', async () => {
     const { cookie } = await registerOrganizer();
-    const draft = await testApp().post('/events').set('Cookie', cookie).send({ title: 'Draft Event', description: 'd', venue: 'v', startsAt: '2026-12-01T18:00:00Z' });
-    const published = await testApp().post('/events').set('Cookie', cookie).send({ title: 'Published Event', description: 'd', venue: 'v', startsAt: '2026-12-01T18:00:00Z' });
+    const draft = await testApp().post('/events').set('Cookie', cookie).send({ title: 'Draft Event', description: 'd', venue: 'v', startsAt: '2099-12-01T18:00:00Z' });
+    const published = await testApp().post('/events').set('Cookie', cookie).send({ title: 'Published Event', description: 'd', venue: 'v', startsAt: '2099-12-01T18:00:00Z' });
     await testApp().patch(`/events/${published.body.id}`).set('Cookie', cookie).send({ status: 'published' });
 
     const res = await testApp().get('/events');
@@ -62,9 +62,32 @@ describe('GET /events (public)', () => {
     expect(titles).not.toContain('Draft Event');
   });
 
+  it('excludes published events whose startsAt is in the past', async () => {
+    const { cookie } = await registerOrganizer();
+    const past = await testApp().post('/events').set('Cookie', cookie).send({ title: 'Already Happened', description: 'd', venue: 'v', startsAt: '2020-01-01T18:00:00Z' });
+    await testApp().patch(`/events/${past.body.id}`).set('Cookie', cookie).send({ status: 'published' });
+
+    const res = await testApp().get('/events');
+    const titles = res.body.map((e: any) => e.title);
+    expect(titles).not.toContain('Already Happened');
+  });
+
+  it('returns past events only when when=past is requested', async () => {
+    const { cookie } = await registerOrganizer();
+    const past = await testApp().post('/events').set('Cookie', cookie).send({ title: 'Already Happened', description: 'd', venue: 'v', startsAt: '2020-01-01T18:00:00Z' });
+    const upcoming = await testApp().post('/events').set('Cookie', cookie).send({ title: 'Still Coming', description: 'd', venue: 'v', startsAt: '2099-12-01T18:00:00Z' });
+    await testApp().patch(`/events/${past.body.id}`).set('Cookie', cookie).send({ status: 'published' });
+    await testApp().patch(`/events/${upcoming.body.id}`).set('Cookie', cookie).send({ status: 'published' });
+
+    const res = await testApp().get('/events').query({ when: 'past' });
+    const titles = res.body.map((e: any) => e.title);
+    expect(titles).toContain('Already Happened');
+    expect(titles).not.toContain('Still Coming');
+  });
+
   it('includes tiers on each event', async () => {
     const { cookie } = await registerOrganizer();
-    const published = await testApp().post('/events').set('Cookie', cookie).send({ title: 'X', description: 'd', venue: 'v', startsAt: '2026-12-01T18:00:00Z' });
+    const published = await testApp().post('/events').set('Cookie', cookie).send({ title: 'X', description: 'd', venue: 'v', startsAt: '2099-12-01T18:00:00Z' });
     await testApp().post(`/events/${published.body.id}/tiers`).set('Cookie', cookie).send({ name: 'General', price: 800, quantityTotal: 100 });
     await testApp().patch(`/events/${published.body.id}`).set('Cookie', cookie).send({ status: 'published' });
 
@@ -76,8 +99,8 @@ describe('GET /events (public)', () => {
 
   it('paginates results with pageSize', async () => {
     const { cookie } = await registerOrganizer();
-    const a = await testApp().post('/events').set('Cookie', cookie).send({ title: 'A', description: 'd', venue: 'v', startsAt: '2026-12-01T18:00:00Z' });
-    const b = await testApp().post('/events').set('Cookie', cookie).send({ title: 'B', description: 'd', venue: 'v', startsAt: '2026-12-02T18:00:00Z' });
+    const a = await testApp().post('/events').set('Cookie', cookie).send({ title: 'A', description: 'd', venue: 'v', startsAt: '2099-12-01T18:00:00Z' });
+    const b = await testApp().post('/events').set('Cookie', cookie).send({ title: 'B', description: 'd', venue: 'v', startsAt: '2099-12-02T18:00:00Z' });
     await testApp().patch(`/events/${a.body.id}`).set('Cookie', cookie).send({ status: 'published' });
     await testApp().patch(`/events/${b.body.id}`).set('Cookie', cookie).send({ status: 'published' });
 
@@ -90,14 +113,14 @@ describe('GET /events (public)', () => {
 describe('GET /events/:id (public)', () => {
   it('404s for a draft event', async () => {
     const { cookie } = await registerOrganizer();
-    const create = await testApp().post('/events').set('Cookie', cookie).send({ title: 'X', description: 'd', venue: 'v', startsAt: '2026-12-01T18:00:00Z' });
+    const create = await testApp().post('/events').set('Cookie', cookie).send({ title: 'X', description: 'd', venue: 'v', startsAt: '2099-12-01T18:00:00Z' });
     const res = await testApp().get(`/events/${create.body.id}`);
     expect(res.status).toBe(404);
   });
 
   it('200s for a published event', async () => {
     const { cookie } = await registerOrganizer();
-    const create = await testApp().post('/events').set('Cookie', cookie).send({ title: 'X', description: 'd', venue: 'v', startsAt: '2026-12-01T18:00:00Z' });
+    const create = await testApp().post('/events').set('Cookie', cookie).send({ title: 'X', description: 'd', venue: 'v', startsAt: '2099-12-01T18:00:00Z' });
     await testApp().patch(`/events/${create.body.id}`).set('Cookie', cookie).send({ status: 'published' });
     const res = await testApp().get(`/events/${create.body.id}`);
     expect(res.status).toBe(200);
@@ -106,7 +129,7 @@ describe('GET /events/:id (public)', () => {
 
   it('lets the owning organizer view their own draft event by id', async () => {
     const { cookie } = await registerOrganizer();
-    const create = await testApp().post('/events').set('Cookie', cookie).send({ title: 'X', description: 'd', venue: 'v', startsAt: '2026-12-01T18:00:00Z' });
+    const create = await testApp().post('/events').set('Cookie', cookie).send({ title: 'X', description: 'd', venue: 'v', startsAt: '2099-12-01T18:00:00Z' });
     const res = await testApp().get(`/events/${create.body.id}`).set('Cookie', cookie);
     expect(res.status).toBe(200);
     expect(res.body.title).toBe('X');
@@ -115,7 +138,7 @@ describe('GET /events/:id (public)', () => {
   it("404s a different organizer's draft event, even when authenticated", async () => {
     const owner = await registerOrganizer('draft-owner@example.com');
     const other = await registerOrganizer('draft-other@example.com');
-    const create = await testApp().post('/events').set('Cookie', owner.cookie).send({ title: 'X', description: 'd', venue: 'v', startsAt: '2026-12-01T18:00:00Z' });
+    const create = await testApp().post('/events').set('Cookie', owner.cookie).send({ title: 'X', description: 'd', venue: 'v', startsAt: '2099-12-01T18:00:00Z' });
     const res = await testApp().get(`/events/${create.body.id}`).set('Cookie', other.cookie);
     expect(res.status).toBe(404);
   });
@@ -124,7 +147,7 @@ describe('GET /events/:id (public)', () => {
 describe('GET /events/mine', () => {
   it("lists the organizer's own events regardless of status", async () => {
     const { cookie } = await registerOrganizer();
-    await testApp().post('/events').set('Cookie', cookie).send({ title: 'X', description: 'd', venue: 'v', startsAt: '2026-12-01T18:00:00Z' });
+    await testApp().post('/events').set('Cookie', cookie).send({ title: 'X', description: 'd', venue: 'v', startsAt: '2099-12-01T18:00:00Z' });
     const res = await testApp().get('/events/mine').set('Cookie', cookie);
     expect(res.status).toBe(200);
     expect(res.body.length).toBe(1);
@@ -132,7 +155,7 @@ describe('GET /events/mine', () => {
 
   it('includes tiers on each event', async () => {
     const { cookie } = await registerOrganizer();
-    const create = await testApp().post('/events').set('Cookie', cookie).send({ title: 'X', description: 'd', venue: 'v', startsAt: '2026-12-01T18:00:00Z' });
+    const create = await testApp().post('/events').set('Cookie', cookie).send({ title: 'X', description: 'd', venue: 'v', startsAt: '2099-12-01T18:00:00Z' });
     await testApp().post(`/events/${create.body.id}/tiers`).set('Cookie', cookie).send({ name: 'General', price: 800, quantityTotal: 100 });
     const res = await testApp().get('/events/mine').set('Cookie', cookie);
     expect(res.body[0].tiers.length).toBe(1);
@@ -143,7 +166,7 @@ describe('GET /events/mine', () => {
 describe('GET /events/mine/stats', () => {
   it('aggregates tickets sold, revenue, and check-ins across all owned events', async () => {
     const { cookie } = await registerOrganizer();
-    const eventA = await testApp().post('/events').set('Cookie', cookie).send({ title: 'A', description: 'd', venue: 'v', startsAt: '2026-12-01T18:00:00Z' });
+    const eventA = await testApp().post('/events').set('Cookie', cookie).send({ title: 'A', description: 'd', venue: 'v', startsAt: '2099-12-01T18:00:00Z' });
     await testApp().patch(`/events/${eventA.body.id}`).set('Cookie', cookie).send({ status: 'published' });
     const tierA = await testApp().post(`/events/${eventA.body.id}/tiers`).set('Cookie', cookie).send({ name: 'General', price: 500, quantityTotal: 100 });
 
@@ -169,7 +192,7 @@ describe('GET /events/mine/stats', () => {
 
   it('excludes a pending (unpaid, abandoned) order from both ticketsSold and revenue', async () => {
     const { cookie } = await registerOrganizer();
-    const eventA = await testApp().post('/events').set('Cookie', cookie).send({ title: 'A', description: 'd', venue: 'v', startsAt: '2026-12-01T18:00:00Z' });
+    const eventA = await testApp().post('/events').set('Cookie', cookie).send({ title: 'A', description: 'd', venue: 'v', startsAt: '2099-12-01T18:00:00Z' });
     await testApp().patch(`/events/${eventA.body.id}`).set('Cookie', cookie).send({ status: 'published' });
     const tierA = await testApp().post(`/events/${eventA.body.id}/tiers`).set('Cookie', cookie).send({ name: 'General', price: 500, quantityTotal: 100 });
     // Checkout reserves quantitySold but the order is left pending (abandoned) —
@@ -184,7 +207,7 @@ describe('GET /events/mine/stats', () => {
   it("only counts the requesting organizer's own events", async () => {
     const mine = await registerOrganizer('mine@example.com');
     const other = await registerOrganizer('other-stats@example.com');
-    const otherEvent = await testApp().post('/events').set('Cookie', other.cookie).send({ title: 'Other', description: 'd', venue: 'v', startsAt: '2026-12-01T18:00:00Z' });
+    const otherEvent = await testApp().post('/events').set('Cookie', other.cookie).send({ title: 'Other', description: 'd', venue: 'v', startsAt: '2099-12-01T18:00:00Z' });
     await testApp().patch(`/events/${otherEvent.body.id}`).set('Cookie', other.cookie).send({ status: 'published' });
     await testApp().post(`/events/${otherEvent.body.id}/tiers`).set('Cookie', other.cookie).send({ name: 'General', price: 500, quantityTotal: 100 });
 
