@@ -39,7 +39,7 @@ beforeEach(async () => {
 async function setupPendingQrOrder() {
   const orgRes = await testApp().post('/organizer/auth/register').send({ email: 'org@example.com', password: 'password123', name: 'Org' });
   const cookie = orgRes.headers['set-cookie'];
-  const eventRes = await testApp().post('/events').set('Cookie', cookie).send({ title: 'X', description: 'd', venue: 'v', startsAt: '2026-12-01T18:00:00Z' });
+  const eventRes = await testApp().post('/events').set('Cookie', cookie).send({ title: 'X', description: 'd', venue: 'v', startsAt: '2099-12-01T18:00:00Z' });
   await testApp().patch(`/events/${eventRes.body.id}`).set('Cookie', cookie).send({ status: 'published' });
   const tierRes = await testApp().post(`/events/${eventRes.body.id}/tiers`).set('Cookie', cookie).send({ name: 'General', price: 800, quantityTotal: 10 });
   const orderRes = await testApp().post('/checkout').send({ items: [{ tierId: tierRes.body.id, quantity: 1 }], guestEmail: 'b@example.com', guestName: 'B', paymentMethod: 'dynamic_qr' });
