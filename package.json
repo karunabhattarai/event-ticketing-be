@@ -2,6 +2,7 @@
   "name": "event-ticketing-backend",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "yarn@4.17.0",
   "type": "commonjs",
   "main": "dist/server.js",
   "scripts": {
@@ -9,10 +10,16 @@
     "dev": "dotenv -e .env -- tsx watch src/server.ts",
     "start": "dotenv -e .env -- node dist/server.js",
     "test": "dotenv -e .env.test -- vitest run",
+    "typecheck": "tsc --noEmit && yarn typecheck:test && yarn typecheck:seed",
     "typecheck:test": "tsc -p tsconfig.test.json --noEmit",
+    "typecheck:seed": "tsc -p tsconfig.seed.json --noEmit",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "prisma:migrate:test": "dotenv -e .env.test -- prisma migrate deploy"
+    "prisma:migrate:test": "dotenv -e .env.test -- prisma migrate deploy",
+    "db:seed": "dotenv -e .env -- tsx prisma/seed.ts"
+  },
+  "prisma": {
+    "seed": "dotenv -e .env -- tsx prisma/seed.ts"
   },
   "dependencies": {
     "@arbyte-solutions/fonepay-service": "^0.2.0",

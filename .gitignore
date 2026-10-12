@@ -3,3 +3,8 @@ node_modules/
 dist/
 .env
 .env.test
+
+# yarn artifacts (repos use npm + package-lock.json)
+.yarn/
+.pnp.*
+.DS_Store
